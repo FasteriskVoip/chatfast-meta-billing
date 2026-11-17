@@ -1,0 +1,17 @@
+{
+  "data": [
+    {
+      "verified_name": "Empresa Teste",
+      "display_phone_number": "+55 61 3399-3888",
+      "id": "106540352242922",
+      "quality_rating": "GREEN"
+    }
+  ],
+  "paging": {
+    "cursors": {
+      "before": "QVFI",
+      "after": "QVFJ"
+    },
+    "next": "https://graph.facebook.com/v27.0/102290129340398/phone_numbers?access_token=VAZAMENTO&limit=1&after=QVFJ"
+  }
+}

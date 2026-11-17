@@ -1,0 +1,63 @@
+# Só desenvolvimento. Produção usa o Dockerfile (Coolify).
+# node_modules ficam em volumes do container: os do Windows (host) têm binários nativos
+# (esbuild, rollup) que não rodam no Linux.
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: consumo
+      POSTGRES_PASSWORD: consumo
+      POSTGRES_DB: consumo_meta
+    ports: ["5432:5432"]
+    volumes: [dbdata:/var/lib/postgresql/data]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U consumo -d consumo_meta"]
+      interval: 5s
+      retries: 10
+
+  backend:
+    image: node:22-alpine
+    working_dir: /app
+    # Só o backend instala as dependências; o frontend espera ele ficar saudável.
+    command: sh -c "npm ci --no-audit --no-fund && npx prisma generate && npx prisma migrate deploy && npm run dev"
+    env_file: backend/.env
+    environment:
+      DATABASE_URL: postgresql://consumo:consumo@db:5432/consumo_meta
+      PORT: "3002"
+      # Bind mount do Windows não gera eventos de arquivo no container: sem polling o tsx watch não recarrega.
+      CHOKIDAR_USEPOLLING: "true"
+    ports: ["${BACKEND_PORT:-3002}:3002"]
+    volumes:
+      - .:/app
+      - node_modules:/app/node_modules
+      - backend_node_modules:/app/backend/node_modules
+      - frontend_node_modules:/app/frontend/node_modules
+    depends_on:
+      db: { condition: service_healthy }
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:3002/health || exit 1"]
+      interval: 5s
+      retries: 60
+      start_period: 120s
+
+  frontend:
+    image: node:22-alpine
+    working_dir: /app
+    command: npm run dev -w frontend -- --host 0.0.0.0
+    environment:
+      VITE_BACKEND_URL: http://backend:3002
+      CHOKIDAR_USEPOLLING: "true"
+    ports: ["${FRONTEND_PORT:-5173}:5173"]
+    volumes:
+      - .:/app
+      - node_modules:/app/node_modules
+      - backend_node_modules:/app/backend/node_modules
+      - frontend_node_modules:/app/frontend/node_modules
+    depends_on:
+      backend: { condition: service_healthy }
+
+volumes:
+  dbdata:
+  node_modules:
+  backend_node_modules:
+  frontend_node_modules:

@@ -1,0 +1,25 @@
+{
+  "data": {
+    "app_id": "1234",
+    "type": "SYSTEM_USER",
+    "application": "Chatfast",
+    "data_access_expires_at": 0,
+    "expires_at": 0,
+    "is_valid": true,
+    "issued_at": 1760000000,
+    "scopes": [
+      "business_management",
+      "whatsapp_business_management",
+      "whatsapp_business_messaging"
+    ],
+    "granular_scopes": [
+      {
+        "scope": "whatsapp_business_management",
+        "target_ids": [
+          "102290129340398"
+        ]
+      }
+    ],
+    "user_id": "7777"
+  }
+}

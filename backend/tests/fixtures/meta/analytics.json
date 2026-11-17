@@ -1,0 +1,23 @@
+{
+  "analytics": {
+    "phone_numbers": [
+      "556133993888"
+    ],
+    "granularity": "DAY",
+    "data_points": [
+      {
+        "start": 1762916400,
+        "end": 1763002800,
+        "sent": 250,
+        "delivered": 245
+      },
+      {
+        "start": 1763002800,
+        "end": 1763089200,
+        "sent": 3,
+        "delivered": 4
+      }
+    ]
+  },
+  "id": "102290129340398"
+}

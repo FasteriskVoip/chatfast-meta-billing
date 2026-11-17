@@ -1,0 +1,29 @@
+{
+  "pricing_analytics": {
+    "data": [
+      {
+        "data_points": [
+          {
+            "start": 1762916400,
+            "end": 1763002800,
+            "phone_number": "556133993888",
+            "country": "BR",
+            "pricing_type": "REGULAR",
+            "pricing_category": "MARKETING",
+            "volume": 100
+          },
+          {
+            "start": 1762916400,
+            "end": 1763002800,
+            "phone_number": "556133993888",
+            "country": "BR",
+            "pricing_type": "FREE_CUSTOMER_SERVICE",
+            "pricing_category": "SERVICE",
+            "volume": 20
+          }
+        ]
+      }
+    ]
+  },
+  "id": "102290129340398"
+}

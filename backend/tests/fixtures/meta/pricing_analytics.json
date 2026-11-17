@@ -1,0 +1,82 @@
+{
+  "pricing_analytics": {
+    "data": [
+      {
+        "data_points": [
+          {
+            "start": 1762916400,
+            "end": 1763002800,
+            "phone_number": "556133993888",
+            "country": "BR",
+            "pricing_type": "REGULAR",
+            "pricing_category": "MARKETING",
+            "tier": "0:MAX",
+            "volume": 120,
+            "cost": 7.5
+          },
+          {
+            "start": 1762916400,
+            "end": 1763002800,
+            "phone_number": "556133993888",
+            "country": "BR",
+            "pricing_type": "REGULAR",
+            "pricing_category": "MARKETING_LITE",
+            "volume": 10,
+            "cost": 0.5
+          },
+          {
+            "start": 1762916400,
+            "end": 1763002800,
+            "phone_number": "556133993888",
+            "country": "BR",
+            "pricing_type": "REGULAR",
+            "pricing_category": "UTILITY",
+            "tier": "0:100000",
+            "volume": 80,
+            "cost": 0.64
+          },
+          {
+            "start": 1762916400,
+            "end": 1763002800,
+            "phone_number": "556133993888",
+            "country": "BR",
+            "pricing_type": "FREE_CUSTOMER_SERVICE",
+            "pricing_category": "SERVICE",
+            "volume": 40,
+            "cost": 0
+          },
+          {
+            "start": 1762916400,
+            "end": 1763002800,
+            "phone_number": "556133993888",
+            "country": "BR",
+            "pricing_type": "FREE_ENTRY_POINT",
+            "pricing_category": "REFERRAL_CONVERSION",
+            "volume": 5,
+            "cost": 0
+          },
+          {
+            "start": 1762916400,
+            "end": 1763002800,
+            "phone": "558540000000",
+            "country": "BR",
+            "pricing_type": "REGULAR",
+            "pricing_category": "AUTHENTICATION",
+            "volume": 30
+          },
+          {
+            "start": 1763002800,
+            "end": 1763089200,
+            "phone_number": "556133993888",
+            "country": "BR",
+            "pricing_type": "REGULAR",
+            "pricing_category": "NOVA_CATEGORIA",
+            "volume": 2,
+            "cost": 0.1
+          }
+        ]
+      }
+    ]
+  },
+  "id": "102290129340398"
+}

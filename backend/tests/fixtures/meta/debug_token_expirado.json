@@ -1,0 +1,16 @@
+{
+  "data": {
+    "app_id": "1234",
+    "type": "USER",
+    "expires_at": 1700000000,
+    "is_valid": false,
+    "scopes": [
+      "whatsapp_business_management"
+    ],
+    "error": {
+      "code": 190,
+      "message": "Error validating access token: Session has expired",
+      "subcode": 463
+    }
+  }
+}

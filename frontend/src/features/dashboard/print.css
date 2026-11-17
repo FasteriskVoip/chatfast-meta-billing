@@ -1,0 +1,19 @@
+/* PDF = impressão do dashboard (research R-10): mesmos números da tela, zero dependências. */
+@media print {
+  @page {
+    size: A4 portrait;
+    margin: 12mm;
+  }
+  body {
+    background: white;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+  .break-before-page {
+    break-before: page;
+  }
+  [data-slot="card"] {
+    break-inside: avoid;
+    box-shadow: none;
+  }
+}

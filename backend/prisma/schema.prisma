@@ -1,0 +1,224 @@
+generator client {
+  provider     = "prisma-client"
+  output       = "../server/generated/prisma"
+  moduleFormat = "esm"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum StatusCliente {
+  ATIVO
+  INATIVO
+
+  @@map("status_cliente")
+}
+
+enum StatusConta {
+  ATIVA
+  TOKEN_INVALIDO
+  TOKEN_EXPIRANDO
+  ERRO_SYNC
+  PAUSADA
+
+  @@map("status_conta")
+}
+
+/// Categoria crua da Meta. O agrupamento em 4 grupos de tela fica no domínio (research R-02).
+enum CategoriaMeta {
+  MARKETING
+  MARKETING_LITE
+  UTILITY
+  AUTHENTICATION
+  AUTHENTICATION_INTERNATIONAL
+  SERVICE
+  REFERRAL_CONVERSION
+  OUTRA
+
+  @@map("categoria_meta")
+}
+
+enum TipoPreco {
+  REGULAR
+  FREE_CUSTOMER_SERVICE
+  FREE_ENTRY_POINT
+  OUTRO
+
+  @@map("tipo_preco")
+}
+
+enum QualidadeNumero {
+  GREEN
+  YELLOW
+  RED
+  UNKNOWN
+
+  @@map("qualidade_numero")
+}
+
+enum OrigemSync {
+  CICLO
+  ADMIN
+  CLIENTE
+
+  @@map("origem_sync")
+}
+
+enum StatusExecucao {
+  EXECUTANDO
+  OK
+  ERRO
+  IGNORADA
+
+  @@map("status_execucao")
+}
+
+model Cliente {
+  id                   String        @id @default(uuid()) @db.Uuid
+  companyid            String        @unique @db.Uuid
+  nome                 String
+  tokenChatfastCifrado String        @map("token_chatfast_cifrado")
+  tokenChatfastUltimos4 String       @map("token_chatfast_ultimos4") @db.Char(4)
+  status               StatusCliente @default(ATIVO)
+  inativoDesde         DateTime?     @map("inativo_desde") @db.Date
+  alertaChatfast       Boolean       @default(false) @map("alerta_chatfast")
+  criadoEm             DateTime      @default(now()) @map("criado_em") @db.Timestamptz(6)
+  atualizadoEm         DateTime      @updatedAt @map("atualizado_em") @db.Timestamptz(6)
+  contas               ContaWaba[]
+
+  @@map("cliente")
+}
+
+model ContaWaba {
+  id                   String      @id @default(uuid()) @db.Uuid
+  clienteId            String      @map("cliente_id") @db.Uuid
+  companyid            String      @db.Uuid
+  wabaId               String      @unique @map("waba_id")
+  nome                 String
+  tokenCifrado         String      @map("token_cifrado")
+  tokenUltimos4        String      @map("token_ultimos4") @db.Char(4)
+  tokenExpiraEm        DateTime?   @map("token_expira_em") @db.Timestamptz(6)
+  moeda                String      @db.Char(3)
+  fuso                 String      @default("America/Fortaleza")
+  status               StatusConta @default(ATIVA)
+  semCustoMeta         Boolean     @default(false) @map("sem_custo_meta")
+  historicoDesde       DateTime?   @map("historico_desde") @db.Date
+  ultimoSyncEm         DateTime?   @map("ultimo_sync_em") @db.Timestamptz(6)
+  ultimoErro           String?     @map("ultimo_erro")
+  desatualizadoDesde   DateTime?   @map("desatualizado_desde") @db.Timestamptz(6)
+  syncEmAndamentoDesde DateTime?   @map("sync_em_andamento_desde") @db.Timestamptz(6)
+  criadoEm             DateTime    @default(now()) @map("criado_em") @db.Timestamptz(6)
+  atualizadoEm         DateTime    @updatedAt @map("atualizado_em") @db.Timestamptz(6)
+  cliente              Cliente     @relation(fields: [clienteId], references: [id])
+  numeros              Numero[]
+  execucoes            ExecucaoSync[]
+  consumos             ConsumoDiario[]
+  mensagens            MensagensDiarias[]
+
+  @@index([companyid])
+  @@map("conta_waba")
+}
+
+model Numero {
+  id                  String          @id @default(uuid()) @db.Uuid
+  contaWabaId         String          @map("conta_waba_id") @db.Uuid
+  companyid           String          @db.Uuid
+  phoneNumberId       String          @unique @map("phone_number_id")
+  displayPhoneNumber  String          @map("display_phone_number")
+  verifiedName        String?         @map("verified_name")
+  qualidade           QualidadeNumero @default(UNKNOWN)
+  coletaAtiva         Boolean         @default(true) @map("coleta_ativa")
+  naoEncontradoNaMeta Boolean         @default(false) @map("nao_encontrado_na_meta")
+  criadoEm            DateTime        @default(now()) @map("criado_em") @db.Timestamptz(6)
+  atualizadoEm        DateTime        @updatedAt @map("atualizado_em") @db.Timestamptz(6)
+  conta               ContaWaba       @relation(fields: [contaWabaId], references: [id])
+  consumos            ConsumoDiario[]
+  mensagens           MensagensDiarias[]
+
+  @@index([companyid])
+  @@map("numero")
+}
+
+model ConsumoDiario {
+  id           BigInt        @id @default(autoincrement())
+  companyid    String        @db.Uuid
+  contaWabaId  String        @map("conta_waba_id") @db.Uuid
+  numeroId     String        @map("numero_id") @db.Uuid
+  data         DateTime      @db.Date
+  categoria    CategoriaMeta
+  tipoPreco    TipoPreco     @map("tipo_preco")
+  pais         String        @default("") @db.VarChar(2)
+  tier         String        @default("")
+  volume       Int
+  /// null = a Meta não informou o custo. Nunca converter em 0.
+  custo        Decimal?      @db.Decimal(14, 6)
+  moeda        String        @db.Char(3)
+  atualizadoEm DateTime      @updatedAt @map("atualizado_em") @db.Timestamptz(6)
+  conta        ContaWaba     @relation(fields: [contaWabaId], references: [id])
+  numero       Numero        @relation(fields: [numeroId], references: [id])
+
+  @@unique([numeroId, data, categoria, tipoPreco, pais, tier], map: "consumo_diario_chave")
+  @@index([companyid, data])
+  @@map("consumo_diario")
+}
+
+model MensagensDiarias {
+  id           BigInt    @id @default(autoincrement())
+  companyid    String    @db.Uuid
+  contaWabaId  String    @map("conta_waba_id") @db.Uuid
+  numeroId     String    @map("numero_id") @db.Uuid
+  data         DateTime  @db.Date
+  enviadas     Int
+  entregues    Int
+  atualizadoEm DateTime  @updatedAt @map("atualizado_em") @db.Timestamptz(6)
+  conta        ContaWaba @relation(fields: [contaWabaId], references: [id])
+  numero       Numero    @relation(fields: [numeroId], references: [id])
+
+  @@unique([numeroId, data], map: "mensagens_diarias_chave")
+  @@index([companyid, data])
+  @@map("mensagens_diarias")
+}
+
+/// Cotação USD→BRL global (configuração da Fasterisk, sem companyid).
+model Cotacao {
+  id           String   @id @default(uuid()) @db.Uuid
+  valor        Decimal  @db.Decimal(10, 4)
+  vigenteDesde DateTime @unique @map("vigente_desde") @db.Date
+  criadoPor    String   @map("criado_por")
+  criadoEm     DateTime @default(now()) @map("criado_em") @db.Timestamptz(6)
+
+  @@map("cotacao")
+}
+
+model ExecucaoSync {
+  id          String         @id @default(uuid()) @db.Uuid
+  companyid   String         @db.Uuid
+  contaWabaId String         @map("conta_waba_id") @db.Uuid
+  origem      OrigemSync
+  status      StatusExecucao
+  inicio      DateTime       @default(now()) @db.Timestamptz(6)
+  fim         DateTime?      @db.Timestamptz(6)
+  janelaDe    DateTime       @map("janela_de") @db.Date
+  janelaAte   DateTime       @map("janela_ate") @db.Date
+  linhas      Int            @default(0)
+  erro        String?
+  conta       ContaWaba      @relation(fields: [contaWabaId], references: [id])
+
+  @@index([contaWabaId, inicio(sort: Desc)])
+  @@map("execucao_sync")
+}
+
+model Auditoria {
+  id         BigInt   @id @default(autoincrement())
+  companyid  String   @db.Uuid
+  userId     String   @map("user_id")
+  acao       String
+  entidade   String
+  entidadeId String   @map("entidade_id")
+  dados      Json
+  criadoEm   DateTime @default(now()) @map("criado_em") @db.Timestamptz(6)
+
+  @@index([companyid, criadoEm(sort: Desc)])
+  @@map("auditoria")
+}

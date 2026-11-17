@@ -1,0 +1,16 @@
+{
+  "data": [
+    {
+      "verified_name": "Suporte",
+      "display_phone_number": "+55 85 4000-0000",
+      "id": "106540352242923",
+      "quality_rating": "NA"
+    }
+  ],
+  "paging": {
+    "cursors": {
+      "before": "QVFJ",
+      "after": "QVFK"
+    }
+  }
+}
