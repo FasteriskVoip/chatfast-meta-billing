@@ -24,16 +24,25 @@ export interface ErroApi {
   codigo?: string;
   traceId?: string;
   disponivelEm?: string;
+  /** SEM_CADASTRO da empresa admin: ela pode se cadastrar pela tela (primeiro acesso). */
+  podeCadastrar?: boolean;
 }
 
-export async function abrirSessao(): Promise<SessaoAberta> {
-  const { data } = await axios.post<SessaoAberta>(`${API_URL}/sessao`, {
+async function iniciarSessao(caminho: string, extra: Record<string, string> = {}): Promise<SessaoAberta> {
+  const { data } = await axios.post<SessaoAberta>(`${API_URL}${caminho}`, {
     companyid: companyidDaUrl(),
     user_id: userIdDaUrl(),
+    ...extra,
   });
   api.defaults.headers.common.Authorization = `Bearer ${data.token}`;
   return data;
 }
+
+export const abrirSessao = () => iniciarSessao('/sessao');
+
+/** Primeiro acesso da Fasterisk: cadastra a própria empresa e já devolve a sessão de admin. */
+export const cadastrarPrimeiroAcesso = (nome: string, tokenChatfast: string) =>
+  iniciarSessao('/sessao/primeiro-acesso', { nome, tokenChatfast });
 
 // Uma renovação compartilhada: várias requisições com 401 esperam a mesma promessa.
 let renovando: Promise<SessaoAberta> | null = null;
@@ -59,4 +68,5 @@ export function mensagemDeErro(err: unknown): string {
   return 'Erro inesperado';
 }
 
+export const podeCadastrar = (err: unknown) => axios.isAxiosError<ErroApi>(err) && err.response?.data?.podeCadastrar === true;
 export const codigoDeErro = (err: unknown) => (axios.isAxiosError<ErroApi>(err) ? err.response?.data?.codigo : undefined);

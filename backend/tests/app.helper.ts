@@ -51,6 +51,7 @@ export async function montarApp(o: {
   const sync = { sincronizarConta: vi.fn(async () => 'OK' as const) };
   const emSegundoPlano = (p: () => Promise<unknown>) => void p();
   const dashboard = criarDashboardService({ repo, consumo, sync, emSegundoPlano });
+  const clientes = criarClientesService({ repo, helena, cifra: cifraFake, sync, emSegundoPlano });
   const app = await criarApp({
     cfg: {
       exigirEmbed: o.exigirEmbed ?? false,
@@ -62,10 +63,11 @@ export async function montarApp(o: {
     sessao: criarSessaoService({
       repo, helena, cifra: cifraFake, adminCompanyids: [CID_FASTERISK],
       emitir: (d) => emitirSessao(d, SEGREDO),
+      cadastrarCliente: clientes.criar,
     }),
     dashboard,
     exportacao: criarExportacaoService({ dashboard, repo }),
-    clientes: criarClientesService({ repo, helena, cifra: cifraFake, sync, emSegundoPlano }),
+    clientes,
     contas: criarContasService({ repo, meta, cifra: cifraFake, sync, emSegundoPlano }),
     cotacoes: criarCotacoesService({ repo }),
     saude: async () => {},

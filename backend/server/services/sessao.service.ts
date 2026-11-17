@@ -28,6 +28,8 @@ interface Deps {
   cifra: Cifra;
   adminCompanyids: string[];
   emitir: (d: { cid: string; uid: string; nome: string; admin: boolean }) => { token: string; exp: number };
+  /** Cadastro de cliente do admin (clientes.service.criar): valida o token na Helena, cifra e audita. */
+  cadastrarCliente: (dados: { nome: string; companyid: string; tokenChatfast: string }, autor: string) => Promise<unknown>;
   cacheMs?: number;
   agora?: () => number;
 }
@@ -53,19 +55,28 @@ export function criarSessaoService(d: Deps) {
     return agente;
   }
 
-  return {
+  function validarIds(companyid: string | undefined, userId: string | undefined) {
+    if (!companyid || !userId || !UUID.test(companyid) || userId.length > 100) {
+      throw new ErroNegocio(401, 'SEM_USUARIO', 'Usuário ou empresa não informados');
+    }
+    return { cid: companyid.toLowerCase(), uid: userId };
+  }
+
+  const service = {
     async abrir(companyid: string | undefined, userId: string | undefined): Promise<SessaoAberta> {
-      if (!companyid || !userId || !UUID.test(companyid) || userId.length > 100) {
-        throw new ErroNegocio(401, 'SEM_USUARIO', 'Usuário ou empresa não informados');
-      }
-      const cid = companyid.toLowerCase();
+      const { cid, uid } = validarIds(companyid, userId);
       const cliente = await d.repo.clientePorCompanyid(cid);
-      if (!cliente) throw new ErroNegocio(404, 'SEM_CADASTRO', 'Conta não cadastrada. Fale com a Fasterisk');
+      if (!cliente) {
+        // A empresa admin (Fasterisk) ainda não cadastrada pode se cadastrar pela própria tela (primeiroAcesso).
+        throw new ErroNegocio(404, 'SEM_CADASTRO', 'Conta não cadastrada. Fale com a Fasterisk', {
+          podeCadastrar: d.adminCompanyids.includes(cid),
+        });
+      }
       if (cliente.status === 'INATIVO') throw new ErroNegocio(403, 'CLIENTE_INATIVO', 'Conta desativada. Fale com a Fasterisk');
 
       let agente: Agente | null;
       try {
-        agente = await buscarAgente(cid, d.cifra.decifrar(cliente.tokenChatfastCifrado), userId);
+        agente = await buscarAgente(cid, d.cifra.decifrar(cliente.tokenChatfastCifrado), uid);
       } catch (err) {
         if (err instanceof ErroToken) {
           if (!cliente.alertaChatfast) await d.repo.atualizarCliente(cliente.id, { alertaChatfast: true });
@@ -80,8 +91,42 @@ export function criarSessaoService(d: Deps) {
       if (cliente.alertaChatfast) await d.repo.atualizarCliente(cliente.id, { alertaChatfast: false });
 
       const admin = ehAdmin(cid, agente, d.adminCompanyids);
-      const { token, exp } = d.emitir({ cid, uid: userId, nome: agente.nome, admin });
+      const { token, exp } = d.emitir({ cid, uid, nome: agente.nome, admin });
       return { token, expiraEm: new Date(exp).toISOString(), nome: agente.nome, admin, empresa: { nome: cliente.nome } };
     },
+
+    /**
+     * Primeiro acesso: a sessão só abre para empresa cadastrada, e o cadastro fica no /admin.
+     * Só empresas de ADMIN_COMPANYIDS se cadastram por aqui, e só um admin delas na Helena (validado com o token informado).
+     */
+    async primeiroAcesso(
+      companyid: string | undefined, userId: string | undefined, dados: { nome?: string; tokenChatfast?: string },
+    ): Promise<SessaoAberta> {
+      const { cid, uid } = validarIds(companyid, userId);
+      if (!d.adminCompanyids.includes(cid)) {
+        throw new ErroNegocio(403, 'SEM_PERMISSAO', 'Cadastro pela tela só para a Fasterisk. Fale com a Fasterisk');
+      }
+      if (await d.repo.clientePorCompanyid(cid)) throw new ErroNegocio(409, 'DUPLICADO', 'Empresa já cadastrada');
+      const nome = dados.nome?.trim();
+      const tokenChatfast = dados.tokenChatfast?.trim();
+      if (!nome || !tokenChatfast) throw new ErroNegocio(400, 'VALIDACAO', 'Informe o nome e o token Chatfast');
+
+      let agente: Agente | null;
+      try {
+        agente = await buscarAgente(cid, tokenChatfast, uid);
+      } catch (err) {
+        if (err instanceof ErroToken) throw new ErroNegocio(422, 'VALIDACAO', 'tokenChatfast: recusado pela Helena');
+        if (err instanceof ErroIndisponivel) {
+          throw new ErroNegocio(503, 'HELENA_INDISPONIVEL', 'Não foi possível validar seu acesso agora. Tente novamente');
+        }
+        throw err;
+      }
+      if (!agente || !ehAdmin(cid, agente, d.adminCompanyids)) {
+        throw new ErroNegocio(403, 'SEM_PERMISSAO', 'Só um administrador da conta pode fazer o cadastro');
+      }
+      await d.cadastrarCliente({ nome, companyid: cid, tokenChatfast }, uid);
+      return service.abrir(cid, uid);
+    },
   };
+  return service;
 }

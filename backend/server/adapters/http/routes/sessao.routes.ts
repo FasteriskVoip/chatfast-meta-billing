@@ -25,4 +25,14 @@ export const rotasSessao =
       }
       return d.sessao.abrir(companyid, userId);
     });
+
+    // Primeiro acesso da empresa admin ainda não cadastrada (ver sessao.service.primeiroAcesso).
+    app.post('/sessao/primeiro-acesso', async (req) => {
+      const c = (req.body ?? {}) as Corpo;
+      return d.sessao.primeiroAcesso(
+        primeiro(c, ['companyid', 'company_id', 'companyId']),
+        primeiro(c, ['user_id', 'userId', 'userid', 'user']),
+        { nome: c.nome, tokenChatfast: c.tokenChatfast },
+      );
+    });
   };

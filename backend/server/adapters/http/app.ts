@@ -35,7 +35,7 @@ export interface Deps {
     pastaCliente?: string;
   };
   repo: Pick<ContaRepository, 'contaPorId' | 'numeroPorId' | 'clientePorId'>;
-  sessao: Pick<SessaoService, 'abrir'>;
+  sessao: Pick<SessaoService, 'abrir' | 'primeiroAcesso'>;
   dashboard: DashboardService;
   exportacao: ExportacaoService;
   clientes: ClientesService;
@@ -46,7 +46,7 @@ export interface Deps {
 }
 
 /** Rotas públicas (sem sessão). Webhook da Meta entraria aqui, validado por assinatura. */
-const SEM_SESSAO = new Set(['POST /api/sessao']);
+const SEM_SESSAO = new Set(['POST /api/sessao', 'POST /api/sessao/primeiro-acesso']);
 
 const erro = (status: number, codigo: string, error: string) => new ErroNegocio(status, codigo, error);
 

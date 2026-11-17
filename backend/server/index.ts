@@ -43,6 +43,7 @@ const sync = criarSyncService({
   cfg: { diasBackfill: env.SYNC_DIAS_BACKFILL, diasReprocesso: env.SYNC_DIAS_REPROCESSO },
 });
 const dashboard = criarDashboardService({ repo, consumo, sync, emSegundoPlano });
+const clientes = criarClientesService({ repo, helena, cifra, sync, emSegundoPlano });
 
 const app = await criarApp({
   cfg: {
@@ -56,10 +57,11 @@ const app = await criarApp({
   sessao: criarSessaoService({
     repo, helena, cifra, adminCompanyids: env.ADMIN_COMPANYIDS,
     emitir: (dados) => emitirSessao(dados, env.SEGREDO_SESSAO),
+    cadastrarCliente: clientes.criar,
   }),
   dashboard,
   exportacao: criarExportacaoService({ dashboard, repo }),
-  clientes: criarClientesService({ repo, helena, cifra, sync, emSegundoPlano }),
+  clientes,
   contas: criarContasService({ repo, meta, cifra, sync, emSegundoPlano }),
   cotacoes: criarCotacoesService({ repo }),
   saude: async () => {

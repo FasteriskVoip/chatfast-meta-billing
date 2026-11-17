@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { Agente, HelenaGateway } from '../../server/domain/ports/HelenaGateway.js';
 import { ErroIndisponivel, ErroToken } from '../../server/domain/ports/erros.js';
+import { criarClientesService } from '../../server/services/clientes.service.js';
 import { criarSessaoService } from '../../server/services/sessao.service.js';
 import { CID_A, CID_FASTERISK, RepoMemoria, cifraFake } from '../fakes.js';
 
@@ -14,9 +15,11 @@ function montar(helena: Partial<HelenaGateway> = {}) {
     listarAgentes: vi.fn(async () => [agente]),
     ...helena,
   };
+  const clientes = criarClientesService({ repo, helena: h, cifra: cifraFake, sync: { sincronizarConta: async () => 'OK' }, emSegundoPlano: () => {} });
   const svc = criarSessaoService({
     repo, helena: h, cifra: cifraFake, adminCompanyids: [CID_FASTERISK],
     emitir: (d) => ({ token: `tok:${d.cid}:${d.uid}:${d.admin}`, exp: 0 }),
+    cadastrarCliente: clientes.criar,
   });
   return { svc, repo, cliente, h };
 }
@@ -31,9 +34,11 @@ describe('sessao.service.abrir', () => {
     expect(await codigo(svc.abrir('nao-uuid', 'x'))).toBe('SEM_USUARIO');
   });
 
-  it('empresa não cadastrada → SEM_CADASTRO', async () => {
+  it('empresa não cadastrada → SEM_CADASTRO; só a empresa admin recebe podeCadastrar', async () => {
     const { svc } = montar();
-    expect(await codigo(svc.abrir('99999999-9999-4999-8999-999999999999', 'agente-1'))).toBe('SEM_CADASTRO');
+    await expect(svc.abrir('99999999-9999-4999-8999-999999999999', 'agente-1'))
+      .rejects.toMatchObject({ codigo: 'SEM_CADASTRO', extra: { podeCadastrar: false } });
+    await expect(svc.abrir(CID_FASTERISK, 'agente-1')).rejects.toMatchObject({ codigo: 'SEM_CADASTRO', extra: { podeCadastrar: true } });
   });
 
   it('cliente inativo → CLIENTE_INATIVO', async () => {
@@ -77,5 +82,52 @@ describe('sessao.service.abrir', () => {
     await svc.abrir(CID_A, 'agente-1');
     await svc.abrir(CID_A, 'agente-1');
     expect(h.obterAgente).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('sessao.service.primeiroAcesso', () => {
+  const admin: Agente = { id: 'adm-1', userId: 'u-adm', nome: 'Bia', isOwner: false, profile: 'ADMIN' };
+  const dados = { nome: 'Fasterisk', tokenChatfast: 'token-fasterisk-9876' };
+  const comAdmin = () => montar({
+    obterAgente: vi.fn(async (_t, id) => [agente, admin].find((a) => a.id === id) ?? null),
+    listarAgentes: vi.fn(async () => [agente, admin]),
+  });
+
+  it('empresa fora de ADMIN_COMPANYIDS não se cadastra pela tela', async () => {
+    const { svc, repo } = comAdmin();
+    expect(await codigo(svc.primeiroAcesso('99999999-9999-4999-8999-999999999999', 'adm-1', dados))).toBe('SEM_PERMISSAO');
+    expect(repo.clientes).toHaveLength(1);
+  });
+
+  it('agente comum da empresa admin não cadastra', async () => {
+    const { svc, repo } = comAdmin();
+    expect(await codigo(svc.primeiroAcesso(CID_FASTERISK, 'agente-1', dados))).toBe('SEM_PERMISSAO');
+    expect(repo.clientes).toHaveLength(1);
+  });
+
+  it('token recusado pela Helena → VALIDACAO, sem cadastro', async () => {
+    const { svc, repo } = montar({ obterAgente: vi.fn(async () => { throw new ErroToken('recusado', 401); }) });
+    expect(await codigo(svc.primeiroAcesso(CID_FASTERISK, 'adm-1', dados))).toBe('VALIDACAO');
+    expect(repo.clientes).toHaveLength(1);
+  });
+
+  it('nome ou token vazios → VALIDACAO', async () => {
+    const { svc } = comAdmin();
+    expect(await codigo(svc.primeiroAcesso(CID_FASTERISK, 'adm-1', { nome: ' ', tokenChatfast: 'x' }))).toBe('VALIDACAO');
+  });
+
+  it('admin da empresa admin cadastra (token cifrado) e já sai com sessão de admin', async () => {
+    const { svc, repo } = comAdmin();
+    const s = await svc.primeiroAcesso(CID_FASTERISK, 'adm-1', dados);
+    expect(s).toMatchObject({ admin: true, nome: 'Bia', empresa: { nome: 'Fasterisk' } });
+    const c = repo.clientes.find((x) => x.companyid === CID_FASTERISK)!;
+    expect(c.tokenChatfastCifrado).not.toBe(dados.tokenChatfast);
+    expect(c.tokenChatfastUltimos4).toBe('9876');
+  });
+
+  it('segunda tentativa → DUPLICADO', async () => {
+    const { svc } = comAdmin();
+    await svc.primeiroAcesso(CID_FASTERISK, 'adm-1', dados);
+    expect(await codigo(svc.primeiroAcesso(CID_FASTERISK, 'adm-1', dados))).toBe('DUPLICADO');
   });
 });
