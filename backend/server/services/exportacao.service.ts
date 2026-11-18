@@ -32,6 +32,353 @@ export function periodoDoMes(mes: string | undefined, hoje: string) {
   return { mes: m, de, ate: fim < hoje ? fim : hoje };
 }
 
+// ---------------------------------------------------------------- relatório do admin (todos os clientes)
+
+type DadosClientes = Awaited<ReturnType<ReturnType<typeof criarExportacaoService>['consumoDosClientes']>>;
+type LinhaCliente = DadosClientes['clientes'][number];
+
+/** Paleta do design system (ARGB). */
+const COR = {
+  marca: 'FF5A55EA', marcaClaro: 'FFEEF0FD', texto: 'FF1E2A3A', cinza: 'FF8A94A6', cinzaClaro: 'FFABB2C4',
+  zebra: 'FFF8F9FC', borda: 'FFE5E8EF', aviso: 'FFFFF1E6', avisoTexto: 'FFA16207',
+  escuro: 'FF1E2A3A', barra: 'FF8F8BF2', ruim: 'FFF8B4B4', medio: 'FFFDE68A', bom: 'FFBBF7D0',
+};
+const FONTE = 'Calibri';
+const FMT = { inteiro: '#,##0', reais: '"R$" #,##0.00', reaisFino: '"R$" #,##0.0000', pct: '0.0%' };
+const dataBr = (iso: string) => iso.split('-').reverse().join('/');
+const num = (v: string | null) => (v === null ? null : Number(v));
+const borda = (cor = COR.borda) => ({ style: 'thin' as const, color: { argb: cor } });
+
+/** Título, período e filtro no topo; devolve a linha onde começa a tabela. */
+function cabecalhoRelatorio(s: ExcelJS.Worksheet, titulo: string, linhas: string[], colunas: number): number {
+  s.views = [{ showGridLines: false }];
+  s.mergeCells(1, 1, 1, colunas);
+  const t = s.getCell(1, 1);
+  t.value = titulo;
+  t.font = { name: FONTE, bold: true, size: 16, color: { argb: 'FFFFFFFF' } };
+  t.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: COR.marca } };
+  t.alignment = { vertical: 'middle', indent: 1 };
+  s.getRow(1).height = 34;
+  linhas.forEach((texto, i) => {
+    s.mergeCells(2 + i, 1, 2 + i, colunas);
+    const c = s.getCell(2 + i, 1);
+    c.value = texto;
+    c.font = { name: FONTE, size: 10, color: { argb: i === 0 ? COR.texto : COR.cinza }, bold: i === 0 };
+    c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: COR.marcaClaro } };
+    c.alignment = { vertical: 'middle', indent: 1 };
+    s.getRow(2 + i).height = 18;
+  });
+  return linhas.length + 3;
+}
+
+/** Linha de títulos da tabela: cor da marca, texto branco, quebra de linha, filtro e congelada. */
+function linhaTitulos(s: ExcelJS.Worksheet, linha: number, titulos: string[]) {
+  const r = s.getRow(linha);
+  r.values = titulos;
+  r.height = 32;
+  r.eachCell((c) => {
+    c.font = { name: FONTE, bold: true, size: 10, color: { argb: 'FFFFFFFF' } };
+    c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: COR.escuro } };
+    c.alignment = { vertical: 'middle', horizontal: 'center', wrapText: true };
+  });
+  s.views = [{ state: 'frozen', ySplit: linha, xSplit: 1, showGridLines: false }];
+  s.autoFilter = { from: { row: linha, column: 1 }, to: { row: linha, column: titulos.length } };
+}
+
+/** Zebra, bordas finas e números à direita em cada linha de dados. */
+function estiloLinha(r: ExcelJS.Row, i: number, colunas: number, apagada = false) {
+  for (let col = 1; col <= colunas; col++) {
+    const c = r.getCell(col);
+    if (i % 2) c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: COR.zebra } };
+    c.border = { bottom: borda() };
+    c.font = { name: FONTE, size: 10, color: { argb: apagada ? COR.cinzaClaro : COR.texto }, ...(col === 1 ? { bold: !apagada } : {}) };
+    c.alignment = { vertical: 'middle', horizontal: typeof c.value === 'number' ? 'right' : col === 1 ? 'left' : 'center' };
+  }
+}
+
+/** Linha de total: fundo da marca claro, negrito, borda em cima. */
+function estiloTotal(r: ExcelJS.Row, colunas: number) {
+  for (let col = 1; col <= colunas; col++) {
+    const c = r.getCell(col);
+    c.font = { name: FONTE, size: 10, bold: true, color: { argb: COR.texto } };
+    c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: COR.marcaClaro } };
+    c.border = { top: borda(COR.marca), bottom: borda(COR.marca) };
+    c.alignment = { vertical: 'middle', horizontal: typeof c.value === 'number' ? 'right' : col === 1 ? 'left' : 'center' };
+  }
+}
+
+function notas(s: ExcelJS.Worksheet, depois: number, colunas: number, textos: string[]) {
+  textos.forEach((texto, i) => {
+    const linha = depois + 2 + i;
+    s.mergeCells(linha, 1, linha, colunas);
+    const c = s.getCell(linha, 1);
+    c.value = texto;
+    c.font = { name: FONTE, size: 9, italic: true, color: { argb: COR.cinza } };
+    c.alignment = { wrapText: true, vertical: 'top' };
+    s.getRow(linha).height = 24;
+  });
+}
+
+function paraImpressao(s: ExcelJS.Worksheet, linhaTitulos: number) {
+  s.pageSetup = {
+    orientation: 'landscape', paperSize: 9, fitToPage: true, fitToWidth: 1, fitToHeight: 0,
+    printTitlesRow: `${linhaTitulos}:${linhaTitulos}`, margins: { left: 0.4, right: 0.4, top: 0.5, bottom: 0.5, header: 0.2, footer: 0.2 },
+  };
+  s.headerFooter = { oddFooter: '&LConsumo Meta&RPágina &P de &N' };
+}
+
+/** Maior custo primeiro; custo ausente vai para o fim (nunca vira 0 na ordenação). */
+const porCusto = (a: LinhaCliente, b: LinhaCliente) => (num(b.custoBrl) ?? -1) - (num(a.custoBrl) ?? -1) || a.nome.localeCompare(b.nome, 'pt-BR');
+
+function abaClientes(wb: ExcelJS.Workbook, { periodo, clientes, total }: DadosClientes, filtro: string, geradoEm: string) {
+  const s = wb.addWorksheet('Clientes', { properties: { tabColor: { argb: COR.marca } } });
+  const colunas = [
+    { titulo: 'Cliente', largura: 30 },
+    { titulo: 'Taxi', largura: 7 },
+    { titulo: 'Status', largura: 9 },
+    { titulo: 'Contas WABA', largura: 9, fmt: FMT.inteiro },
+    { titulo: 'Enviadas', largura: 12, fmt: FMT.inteiro },
+    { titulo: 'Entregues', largura: 12, fmt: FMT.inteiro },
+    { titulo: 'Taxa de entrega', largura: 10, fmt: FMT.pct },
+    { titulo: 'Mensagens cobradas', largura: 12, fmt: FMT.inteiro },
+    { titulo: 'Mensagens grátis', largura: 12, fmt: FMT.inteiro },
+    { titulo: 'Custo estimado (R$)', largura: 16, fmt: FMT.reais },
+    { titulo: '% do custo total', largura: 10, fmt: FMT.pct },
+    { titulo: 'Custo por msg cobrada', largura: 13, fmt: FMT.reaisFino },
+    { titulo: 'Situação do custo', largura: 22 },
+    { titulo: 'companyid', largura: 38 },
+  ];
+  const n = colunas.length;
+  const inicio = cabecalhoRelatorio(s, 'Consumo WhatsApp Cloud API: clientes', [
+    `Período: ${dataBr(periodo.de)} a ${dataBr(periodo.ate)}`,
+    `${filtro} · ${clientes.length} cliente(s) · gerado em ${geradoEm}`,
+  ], n);
+  colunas.forEach((c, i) => {
+    s.getColumn(i + 1).width = c.largura;
+    if (c.fmt) s.getColumn(i + 1).numFmt = c.fmt;
+  });
+  linhaTitulos(s, inicio, colunas.map((c) => c.titulo));
+
+  const totalNum = num(total.custoBrl);
+  [...clientes].sort(porCusto).forEach((c, i) => {
+    const custo = num(c.custoBrl);
+    const r = s.addRow([
+      c.nome, c.taxi ? 'Sim' : 'Não', c.status === 'ATIVO' ? 'Ativo' : 'Inativo', c.contas, c.enviadas, c.entregues,
+      c.taxaEntrega ?? '—', c.cobradas, c.gratuitas,
+      valorOuTexto(c.custoBrl, c.custoSituacao),
+      custo !== null && totalNum ? custo / totalNum : '—',
+      num(c.custoPorCobradaBrl) ?? '—',
+      SITUACAO[c.custoSituacao], c.companyid,
+    ]);
+    estiloLinha(r, i, n, c.status === 'INATIVO');
+    r.getCell(n).font = { size: 9, color: { argb: COR.cinzaClaro } };
+    // Custo parcial/ausente salta aos olhos: o valor real é maior ou não existe.
+    if (c.custoSituacao !== 'completo') {
+      for (const col of [10, 13]) {
+        const cel = r.getCell(col);
+        cel.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: COR.aviso } };
+        cel.font = { color: { argb: COR.avisoTexto }, italic: custo === null };
+      }
+    }
+  });
+
+  const soma = (k: 'contas' | 'enviadas' | 'entregues' | 'cobradas' | 'gratuitas') => clientes.reduce((t, c) => t + c[k], 0);
+  const enviadas = soma('enviadas');
+  const cobradas = soma('cobradas');
+  // Média por mensagem só entre quem tem custo: cobradas sem custo conhecido puxariam a média para baixo.
+  const cobradasComCusto = clientes.filter((c) => c.custoBrl !== null).reduce((t, c) => t + c.cobradas, 0);
+  const rt = s.addRow([
+    'Total', '', '', soma('contas'), enviadas, soma('entregues'), enviadas ? soma('entregues') / enviadas : '—', cobradas, soma('gratuitas'),
+    totalNum ?? 'indisponível', totalNum !== null ? 1 : '—', cobradasComCusto ? (totalNum ?? 0) / cobradasComCusto : '—',
+    totalNum === null ? 'nenhum cliente com custo' : total.incompleto ? 'parcial (há clientes sem custo completo)' : 'completo', '',
+  ]);
+  estiloTotal(rt, n);
+  // Recursos nativos do Excel: barra no custo e na participação; escala de cor na taxa de entrega.
+  const de = inicio + 1;
+  const ate = rt.number - 1;
+  if (ate >= de) {
+    for (const col of ['J', 'K']) {
+      s.addConditionalFormatting({
+        ref: `${col}${de}:${col}${ate}`,
+        rules: [{ type: 'dataBar', priority: 1, gradient: false, cfvo: [{ type: 'num', value: 0 }, { type: 'max' }], color: { argb: COR.barra } } as ExcelJS.ConditionalFormattingRule],
+      });
+    }
+    s.addConditionalFormatting({
+      ref: `G${de}:G${ate}`,
+      rules: [{
+        type: 'colorScale', priority: 2,
+        cfvo: [{ type: 'num', value: 0.8 }, { type: 'num', value: 0.9 }, { type: 'num', value: 0.97 }],
+        color: [{ argb: COR.ruim }, { argb: COR.medio }, { argb: COR.bom }],
+      } as ExcelJS.ConditionalFormattingRule],
+    });
+  }
+  notas(s, rt.number, n, [
+    'Custo estimado em R$: a Meta informa o custo na moeda de cada WABA; as contas em dólar são convertidas pela cotação de cada dia (PTAX do Banco Central ou cadastro manual). A cobrança oficial é a fatura da Meta.',
+    '"Parcial": parte do período sem custo informado pela Meta, então o valor real é maior ou igual. "Indisponível": a Meta não informa custo (ex.: linha de crédito de parceiro) ou falta a cotação. Custo ausente nunca é tratado como zero.',
+    'Enviadas e entregues contam todas as mensagens. Mensagens cobradas e grátis seguem a classificação de cobrança da Meta (pricing_analytics), que conta só as entregues.',
+  ]);
+  paraImpressao(s, inicio);
+}
+
+const COLS_CATEGORIA: Grupo[] = ['MARKETING', 'UTILITY', 'AUTHENTICATION', 'SERVICE'];
+
+/** Bloco de indicador: rótulo pequeno, valor grande, detalhe em cinza (3 linhas, 2 colunas mescladas). */
+function indicador(s: ExcelJS.Worksheet, linha: number, col: number, rotulo: string, valor: number | string, fmt: string, detalhe: string) {
+  const bloco = [[rotulo, 9, COR.cinza, false], [valor, 20, COR.escuro, true], [detalhe, 9, COR.cinza, false]] as const;
+  bloco.forEach(([v, size, cor, bold], i) => {
+    s.mergeCells(linha + i, col, linha + i, col + 1);
+    const c = s.getCell(linha + i, col);
+    c.value = v;
+    c.font = { name: FONTE, size, bold, color: { argb: cor } };
+    c.alignment = { vertical: 'middle', horizontal: 'left', indent: 1 };
+    c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: COR.zebra } };
+    if (i === 1 && typeof v === 'number') c.numFmt = fmt;
+  });
+  for (let i = 0; i < 3; i++) {
+    for (const cc of [col, col + 1]) {
+      const c = s.getCell(linha + i, cc);
+      c.border = {
+        top: i === 0 ? borda(COR.marca) : undefined,
+        bottom: i === 2 ? borda() : undefined,
+        left: cc === col ? borda() : undefined,
+        right: cc === col + 1 ? borda() : undefined,
+      };
+    }
+  }
+}
+
+/** Título de seção dentro do resumo. */
+function secao(s: ExcelJS.Worksheet, linha: number, colunas: number, texto: string) {
+  s.mergeCells(linha, 1, linha, colunas);
+  const c = s.getCell(linha, 1);
+  c.value = texto;
+  c.font = { name: FONTE, size: 12, bold: true, color: { argb: COR.marca } };
+  c.border = { bottom: borda(COR.marca) };
+  s.getRow(linha).height = 22;
+}
+
+/** Aba de abertura: indicadores, maiores custos e distribuição por categoria. */
+function abaResumo(wb: ExcelJS.Workbook, { periodo, clientes, total }: DadosClientes, filtro: string, geradoEm: string) {
+  const s = wb.addWorksheet('Resumo', { properties: { tabColor: { argb: COR.marca } } });
+  const n = 8;
+  [6, 30, 16, 12, 14, 14, 16, 14].forEach((w, i) => (s.getColumn(i + 1).width = w));
+  cabecalhoRelatorio(s, 'Relatório de consumo · WhatsApp Cloud API', [
+    `Período: ${dataBr(periodo.de)} a ${dataBr(periodo.ate)}`,
+    `${filtro} · gerado em ${geradoEm}`,
+  ], n);
+
+  const soma = (k: 'enviadas' | 'entregues' | 'cobradas') => clientes.reduce((t, c) => t + c[k], 0);
+  const enviadas = soma('enviadas');
+  const entregues = soma('entregues');
+  const totalNum = num(total.custoBrl);
+  const comConsumo = clientes.filter((c) => c.enviadas > 0 || c.mensagens > 0).length;
+  const ativos = clientes.filter((c) => c.status === 'ATIVO').length;
+  indicador(s, 5, 1, 'CUSTO ESTIMADO', totalNum ?? '—', FMT.reais,
+    totalNum === null ? 'nenhum cliente com custo' : total.incompleto ? 'parcial: há clientes sem custo completo' : 'completo');
+  indicador(s, 5, 3, 'MENSAGENS ENVIADAS', enviadas, FMT.inteiro, `${entregues.toLocaleString('pt-BR')} entregues`);
+  indicador(s, 5, 5, 'TAXA DE ENTREGA', enviadas ? entregues / enviadas : '—', FMT.pct, 'entregues ÷ enviadas');
+  indicador(s, 5, 7, 'CLIENTES COM CONSUMO', comConsumo, FMT.inteiro, `de ${clientes.length} (${ativos} ativos)`);
+  s.getRow(6).height = 30;
+
+  // Maiores custos.
+  let linha = 10;
+  secao(s, linha, n, 'Maiores custos do período');
+  linha += 1;
+  const titulosTop = ['#', 'Cliente', 'Custo estimado (R$)', '% do total', 'Enviadas', 'Msgs cobradas', 'Custo por msg', 'Situação'];
+  const rTit = s.getRow(linha);
+  rTit.values = titulosTop;
+  rTit.eachCell((c) => {
+    c.font = { name: FONTE, bold: true, size: 10, color: { argb: 'FFFFFFFF' } };
+    c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: COR.escuro } };
+    c.alignment = { vertical: 'middle', horizontal: 'center', wrapText: true };
+  });
+  rTit.height = 28;
+  const top = [...clientes].filter((c) => num(c.custoBrl) !== null).sort(porCusto).slice(0, 10);
+  const inicioTop = linha + 1;
+  top.forEach((c, i) => {
+    const custo = num(c.custoBrl)!;
+    const r = s.getRow(inicioTop + i);
+    r.values = [i + 1, c.nome, custo, totalNum ? custo / totalNum : '—', c.enviadas, c.cobradas, num(c.custoPorCobradaBrl) ?? '—', SITUACAO[c.custoSituacao]];
+    [null, null, FMT.reais, FMT.pct, FMT.inteiro, FMT.inteiro, FMT.reaisFino, null].forEach((fmt, k) => { if (fmt) r.getCell(k + 1).numFmt = fmt; });
+    estiloLinha(r, i, n);
+  });
+  if (top.length) {
+    s.addConditionalFormatting({
+      ref: `C${inicioTop}:C${inicioTop + top.length - 1}`,
+      rules: [{ type: 'dataBar', priority: 1, gradient: false, cfvo: [{ type: 'num', value: 0 }, { type: 'max' }], color: { argb: COR.barra } } as ExcelJS.ConditionalFormattingRule],
+    });
+  } else {
+    s.mergeCells(inicioTop, 1, inicioTop, n);
+    s.getCell(inicioTop, 1).value = 'Nenhum cliente com custo informado no período.';
+    s.getCell(inicioTop, 1).font = { name: FONTE, italic: true, color: { argb: COR.cinza } };
+  }
+
+  // Por categoria.
+  linha = inicioTop + Math.max(top.length, 1) + 2;
+  secao(s, linha, n, 'Por categoria de cobrança');
+  linha += 1;
+  const rCat = s.getRow(linha);
+  rCat.values = ['', 'Categoria', 'Mensagens', '% das msgs', 'Custo estimado (R$)', '% do custo'];
+  rCat.eachCell((c, col) => {
+    if (col === 1) return;
+    c.font = { name: FONTE, bold: true, size: 10, color: { argb: 'FFFFFFFF' } };
+    c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: COR.escuro } };
+    c.alignment = { vertical: 'middle', horizontal: 'center', wrapText: true };
+  });
+  rCat.height = 28;
+  const volTotal = clientes.reduce((t, c) => t + COLS_CATEGORIA.reduce((x, g) => x + (c.categorias[g]?.volume ?? 0), 0), 0);
+  COLS_CATEGORIA.forEach((g, i) => {
+    const vol = clientes.reduce((t, c) => t + (c.categorias[g]?.volume ?? 0), 0);
+    const custos = clientes.map((c) => num(c.categorias[g]?.custoBrl ?? null)).filter((x): x is number => x !== null);
+    const custo = custos.length ? custos.reduce((t, x) => t + x, 0) : null;
+    const r = s.getRow(linha + 1 + i);
+    r.values = ['', NOME_GRUPO[g], vol, volTotal ? vol / volTotal : '—', custo ?? '—', custo !== null && totalNum ? custo / totalNum : '—'];
+    [null, null, FMT.inteiro, FMT.pct, FMT.reais, FMT.pct].forEach((fmt, k) => { if (fmt) r.getCell(k + 1).numFmt = fmt; });
+    estiloLinha(r, i, 6);
+    r.getCell(1).fill = { type: 'pattern', pattern: 'none' };
+  });
+
+  notas(s, linha + COLS_CATEGORIA.length, n, [
+    'Valores estimados a partir dos dados da Meta (pricing_analytics e analytics); a cobrança oficial é a fatura da Meta. Detalhes por cliente nas abas "Clientes" e "Por categoria".',
+  ]);
+  s.pageSetup = { orientation: 'portrait', paperSize: 9, fitToPage: true, fitToWidth: 1, fitToHeight: 0,
+    margins: { left: 0.5, right: 0.5, top: 0.6, bottom: 0.6, header: 0.3, footer: 0.3 } };
+  s.headerFooter = { oddFooter: '&LConsumo Meta&RPágina &P de &N' };
+}
+
+function abaCategorias(wb: ExcelJS.Workbook, { periodo, clientes, total }: DadosClientes, filtro: string) {
+  const s = wb.addWorksheet('Por categoria');
+  const titulos = ['Cliente', ...COLS_CATEGORIA.flatMap((g) => [`${NOME_GRUPO[g]}\nmensagens`, `${NOME_GRUPO[g]}\ncusto (R$)`]), 'Custo total (R$)'];
+  const n = titulos.length;
+  const inicio = cabecalhoRelatorio(s, 'Consumo por categoria de cobrança', [
+    `Período: ${dataBr(periodo.de)} a ${dataBr(periodo.ate)} · ${filtro}`,
+  ], n);
+  s.getColumn(1).width = 30;
+  for (let col = 2; col <= n; col++) {
+    s.getColumn(col).width = 13;
+    s.getColumn(col).numFmt = col === n || col % 2 === 1 ? FMT.reais : FMT.inteiro;
+  }
+  linhaTitulos(s, inicio, titulos);
+
+  [...clientes].sort(porCusto).forEach((c, i) => {
+    const r = s.addRow([
+      c.nome,
+      ...COLS_CATEGORIA.flatMap((g) => [c.categorias[g]?.volume ?? 0, num(c.categorias[g]?.custoBrl ?? null) ?? '—']),
+      valorOuTexto(c.custoBrl, c.custoSituacao),
+    ]);
+    estiloLinha(r, i, n, c.status === 'INATIVO');
+  });
+  const somaCat = (g: Grupo) => clientes.reduce((t, c) => t + (c.categorias[g]?.volume ?? 0), 0);
+  const custoCat = (g: Grupo) => {
+    const v = clientes.map((c) => num(c.categorias[g]?.custoBrl ?? null)).filter((x): x is number => x !== null);
+    return v.length ? v.reduce((t, x) => t + x, 0) : '—';
+  };
+  const rt = s.addRow(['Total', ...COLS_CATEGORIA.flatMap((g) => [somaCat(g), custoCat(g)]), num(total.custoBrl) ?? 'indisponível']);
+  estiloTotal(rt, n);
+  notas(s, rt.number, n, ['Serviço (respostas dentro da janela de 24h) e entradas por anúncio são gratuitos. "—" = custo não informado pela Meta.']);
+  paraImpressao(s, inicio);
+}
+
 export function criarExportacaoService(d: {
   dashboard: Pick<DashboardService, 'dadosResumo'>;
   repo: Pick<ContaRepository, 'clientePorCompanyid' | 'listarClientes'>;
@@ -48,8 +395,12 @@ export function criarExportacaoService(d: {
       const { resumo, contas } = await d.dashboard.dadosResumo(c.companyid, { de: periodo.de, ate: periodo.ate });
       return {
         clienteId: c.id, nome: c.nome, companyid: c.companyid, status: c.status, taxi: c.taxi, contas: contas.length,
-        enviadas: resumo.envio.enviadas, mensagens: resumo.total.volume, cobradas: resumo.total.cobradas, gratuitas: resumo.total.volume - resumo.total.cobradas,
+        enviadas: resumo.envio.enviadas, entregues: resumo.envio.entregues, taxaEntrega: resumo.envio.taxaEntrega,
+        mensagens: resumo.total.volume, cobradas: resumo.total.cobradas, gratuitas: resumo.total.volume - resumo.total.cobradas,
         custoBrl: resumo.total.custoBrl, custoSituacao: resumo.total.custoSituacao,
+        custoPorCobradaBrl: resumo.total.custoMedioPorCobradaBrl,
+        categorias: Object.fromEntries(resumo.categorias.map((x) => [x.categoria, { volume: x.volume, custoBrl: x.custoBrl }])) as
+          Record<Grupo, { volume: number; custoBrl: string | null }>,
       };
     }));
     // Soma só os custos conhecidos; nenhum conhecido = ausente (null), nunca 0. Um lugar só para tela e relatório.
@@ -64,36 +415,23 @@ export function criarExportacaoService(d: {
   return {
     consumoDosClientes,
 
-    /** Relatório do admin: uma linha por cliente no mês, com o total. */
+    /** Relatório do admin: aba "Clientes" (uma linha por cliente, do maior custo para o menor) e "Por categoria". */
     async relatorioClientesXlsx(mes?: string, taxi?: boolean): Promise<{ arquivo: Buffer; nome: string }> {
-      const { periodo, clientes, total } = await consumoDosClientes(mes, taxi);
+      const dados = await consumoDosClientes(mes, taxi);
       const wb = new ExcelJS.Workbook();
-      wb.creator = 'Consumo Meta';
-      const s = wb.addWorksheet('Clientes');
-      s.addRows([
-        ['Consumo WhatsApp Cloud API: todos os clientes'],
-        ['Período', `${periodo.de} a ${periodo.ate}`],
-        ['Clientes', taxi === undefined ? 'Todos' : taxi ? 'Só clientes Taxi' : 'Só clientes que não são Taxi'],
-        ['Observação', 'Custo em R$ estimado pela cotação vigente em cada dia; a cobrança oficial é a fatura da Meta'],
-        [],
-        ['Cliente', 'companyid', 'Status', 'Taxi', 'Contas WABA', 'Enviadas', 'Mensagens', 'Cobradas', 'Gratuitas', 'Custo R$', 'Situação do custo'],
-      ]);
-      for (const c of clientes) {
-        s.addRow([c.nome, c.companyid, c.status === 'ATIVO' ? 'Ativo' : 'Inativo', c.taxi ? 'Sim' : 'Não', c.contas, c.enviadas, c.mensagens, c.cobradas, c.gratuitas,
-          valorOuTexto(c.custoBrl, c.custoSituacao), SITUACAO[c.custoSituacao]]);
-      }
-      const soma = (k: 'enviadas' | 'mensagens' | 'cobradas' | 'gratuitas') => clientes.reduce((t, c) => t + c[k], 0);
-      s.addRow(['Total', '', '', '', clientes.reduce((t, c) => t + c.contas, 0), soma('enviadas'), soma('mensagens'), soma('cobradas'), soma('gratuitas'),
-        total.custoBrl === null ? 'indisponível' : Number(total.custoBrl),
-        total.custoBrl === null ? 'nenhum cliente com custo' : total.incompleto ? 'parcial (há clientes sem custo completo)' : 'completo']);
-      s.getRow(6).font = { bold: true };
-      s.lastRow!.font = { bold: true };
-      s.getColumn(10).numFmt = '"R$" #,##0.00';
-      s.columns.forEach((col, i) => (col.width = [28, 38, 10, 8, 12, 12, 12, 12, 12, 14, 40][i]));
+      const filtro = taxi === undefined ? 'Todos os clientes' : taxi ? 'Só clientes Taxi' : 'Só clientes que não são Taxi';
+      const geradoEm = agora().toLocaleString('pt-BR', { timeZone: FUSO_PADRAO, dateStyle: 'short', timeStyle: 'short' });
+      Object.assign(wb, {
+        creator: 'Consumo Meta', lastModifiedBy: 'Consumo Meta', company: 'Fasterisk', created: agora(), modified: agora(),
+        title: `Consumo WhatsApp Cloud API · ${dataBr(dados.periodo.de)} a ${dataBr(dados.periodo.ate)}`,
+        subject: `Relatório de consumo e custo estimado por cliente (${filtro})`,
+      });
+      abaResumo(wb, dados, filtro, geradoEm);
+      abaClientes(wb, dados, filtro, geradoEm);
+      abaCategorias(wb, dados, filtro);
       const sufixo = taxi === undefined ? '' : taxi ? '-taxi' : '-nao-taxi';
-      return { arquivo: Buffer.from(await wb.xlsx.writeBuffer()), nome: `consumo-clientes${sufixo}-${periodo.mes}.xlsx` };
+      return { arquivo: Buffer.from(await wb.xlsx.writeBuffer()), nome: `consumo-clientes${sufixo}-${dados.periodo.mes}.xlsx` };
     },
-
 
     async xlsx(companyid: string, f: FiltrosDashboard): Promise<{ arquivo: Buffer; nome: string }> {
       const empresa = (await d.repo.clientePorCompanyid(companyid))?.nome ?? companyid;

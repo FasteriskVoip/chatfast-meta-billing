@@ -5,6 +5,25 @@ import { criarExportacaoService, periodoDoMes } from '../../server/services/expo
 import { CID_A, ConsumoMemoria, RepoMemoria } from '../fakes.js';
 
 const CID_B = '22222222-2222-4222-8222-222222222222';
+
+/** Lê uma aba do relatório: textos do topo, linhas por título de coluna e a linha de total. */
+async function lerAba(arquivo: Buffer, aba: string) {
+  const wb = new ExcelJS.Workbook();
+  await wb.xlsx.load(arquivo as unknown as ArrayBuffer);
+  const s = wb.getWorksheet(aba)!;
+  // Array.from preenche os buracos (linhas vazias) que o ExcelJS deixa no array.
+  const valores = Array.from(s.getSheetValues(), (l) => (Array.isArray(l) ? l.slice(1) : []));
+  const iTitulos = valores.findIndex((l) => l[0] === 'Cliente');
+  const titulos = valores[iTitulos] as string[];
+  const iTotal = valores.findIndex((l, i) => i > iTitulos && l[0] === 'Total');
+  const comoObjeto = (l: unknown[]) => Object.fromEntries(titulos.map((t, i) => [t, l[i] ?? '']));
+  return {
+    s, linhaTitulos: iTitulos,
+    topo: valores.slice(0, iTitulos).flat().filter(Boolean).map(String),
+    linhas: valores.slice(iTitulos + 1, iTotal).map(comoObjeto),
+    total: comoObjeto(valores[iTotal]!),
+  };
+}
 // 2026-11-18 12:00 em Fortaleza
 const AGORA = new Date('2026-11-18T15:00:00Z');
 
@@ -61,14 +80,19 @@ describe('consumo e relatório de todos os clientes', () => {
     const svc = await montar();
     const { arquivo, nome } = await svc.relatorioClientesXlsx('2026-10');
     expect(nome).toBe('consumo-clientes-2026-10.xlsx');
-    const wb = new ExcelJS.Workbook();
-    await wb.xlsx.load(arquivo as unknown as ArrayBuffer);
-    const linhas = wb.getWorksheet('Clientes')!.getSheetValues().filter(Boolean).map((l) => (l as unknown[]).slice(1));
-    expect(linhas[1]).toEqual(['Período', '2026-10-01 a 2026-10-31']);
-    expect(linhas).toContainEqual(['Clientes', 'Todos']);
-    expect(linhas).toContainEqual(['Clínica São José', CID_A, 'Ativo', 'Não', 1, 500, 99, 99, 0, 250, 'completo']);
-    expect(linhas).toContainEqual(['Loja Sem Conta', CID_B, 'Ativo', 'Sim', 0, 0, 0, 0, 0, 0, 'completo']);
-    expect(linhas.at(-1)).toEqual(['Total', '', '', '', 1, 500, 99, 99, 0, 250, 'completo']);
+    const { topo, linhas, total } = await lerAba(arquivo, 'Clientes');
+    expect(topo).toEqual(expect.arrayContaining(['Período: 01/10/2026 a 31/10/2026', expect.stringContaining('Todos os clientes')]));
+    // Maior custo primeiro.
+    expect(linhas.map((l) => l.Cliente)).toEqual(['Clínica São José', 'Loja Sem Conta']);
+    expect(linhas[0]).toMatchObject({
+      Taxi: 'Não', Status: 'Ativo', 'Contas WABA': 1, Enviadas: 500, Entregues: 500, 'Taxa de entrega': 1,
+      'Mensagens cobradas': 99, 'Mensagens grátis': 0, 'Custo estimado (R$)': 250, '% do custo total': 1,
+      'Situação do custo': 'completo', companyid: CID_A,
+    });
+    expect(linhas[0]!['Custo por msg cobrada']).toBeCloseTo(250 / 99, 4);
+    expect(linhas[1]).toMatchObject({ Taxi: 'Sim', 'Custo estimado (R$)': 0, 'Taxa de entrega': '—' });
+    expect(total).toMatchObject({ 'Contas WABA': 1, Enviadas: 500, 'Mensagens cobradas': 99, 'Custo estimado (R$)': 250, 'Situação do custo': 'completo' });
+    expect(total['Custo por msg cobrada']).toBeCloseTo(250 / 99, 4);
   });
 
   it('filtro Taxi: só os clientes Taxi, ou só os demais', async () => {
@@ -77,11 +101,9 @@ describe('consumo e relatório de todos os clientes', () => {
     expect((await svc.consumoDosClientes(undefined, false)).clientes.map((c) => c.nome)).toEqual(['Clínica São José']);
     const { arquivo, nome } = await svc.relatorioClientesXlsx('2026-11', true);
     expect(nome).toBe('consumo-clientes-taxi-2026-11.xlsx');
-    const wb = new ExcelJS.Workbook();
-    await wb.xlsx.load(arquivo as unknown as ArrayBuffer);
-    const linhas = wb.getWorksheet('Clientes')!.getSheetValues().filter(Boolean).map((l) => (l as unknown[]).slice(1));
-    expect(linhas).toContainEqual(['Clientes', 'Só clientes Taxi']);
-    expect(linhas.some((l) => l[0] === 'Clínica São José')).toBe(false);
+    const { topo, linhas } = await lerAba(arquivo, 'Clientes');
+    expect(topo).toEqual(expect.arrayContaining([expect.stringContaining('Só clientes Taxi')]));
+    expect(linhas.map((l) => l.Cliente)).toEqual(['Loja Sem Conta']);
   });
 
   it('total vem do backend: soma dos custos conhecidos e marca de incompleto', async () => {
@@ -104,9 +126,49 @@ describe('consumo e relatório de todos os clientes', () => {
     });
     const svc = criarExportacaoService({ dashboard, repo, agora: () => AGORA });
     expect((await svc.consumoDosClientes()).total).toEqual({ custoBrl: null, incompleto: true });
+    const arquivo = (await svc.relatorioClientesXlsx()).arquivo;
+    const { linhas, total } = await lerAba(arquivo, 'Clientes');
+    expect(linhas[0]).toMatchObject({ 'Custo estimado (R$)': 'indisponível (cotação não cadastrada)', '% do custo total': '—' });
+    expect(total).toMatchObject({ 'Custo estimado (R$)': 'indisponível', 'Situação do custo': 'nenhum cliente com custo' });
+    const cat = await lerAba(arquivo, 'Por categoria');
+    expect(cat.linhas[0]).toMatchObject({ 'Marketing\nmensagens': 10, 'Marketing\ncusto (R$)': '—' });
+  });
+
+  it('formato: títulos congelados e com filtro, números formatados, aba por categoria e pronto para imprimir', async () => {
+    const svc = await montar();
+    const arquivo = (await svc.relatorioClientesXlsx('2026-10')).arquivo;
+    const { s, linhaTitulos } = await lerAba(arquivo, 'Clientes');
+    const linha = linhaTitulos; // o índice do getSheetValues já é o número da linha
+    expect(s.views[0]).toMatchObject({ state: 'frozen', ySplit: linha });
+    expect(s.autoFilter).toBeTruthy();
+    const formato = (titulo: string) => s.getColumn(((s.getRow(linha).values as unknown[]).indexOf(titulo))).numFmt;
+    expect(formato('Enviadas')).toBe('#,##0');
+    expect(formato('Custo estimado (R$)')).toBe('"R$" #,##0.00');
+    expect(formato('% do custo total')).toBe('0.0%');
+    expect(s.pageSetup).toMatchObject({ orientation: 'landscape', fitToWidth: 1 });
+    const cat = await lerAba(arquivo, 'Por categoria');
+    expect(cat.linhas[0]).toMatchObject({ Cliente: 'Clínica São José', 'Marketing\nmensagens': 99, 'Marketing\ncusto (R$)': 250 });
+    expect(cat.total).toMatchObject({ 'Marketing\nmensagens': 99, 'Custo total (R$)': 250 });
+  });
+
+  it('aba Resumo abre o arquivo: indicadores, maiores custos, categorias e propriedades do arquivo', async () => {
+    const svc = await montar();
+    const arquivo = (await svc.relatorioClientesXlsx('2026-10')).arquivo;
     const wb = new ExcelJS.Workbook();
-    await wb.xlsx.load((await svc.relatorioClientesXlsx()).arquivo as unknown as ArrayBuffer);
-    const linhas = wb.getWorksheet('Clientes')!.getSheetValues().filter(Boolean).map((l) => (l as unknown[]).slice(1));
-    expect(linhas.at(-1)!.slice(-2)).toEqual(['indisponível', 'nenhum cliente com custo']);
+    await wb.xlsx.load(arquivo as unknown as ArrayBuffer);
+    expect(wb.worksheets.map((w) => w.name)).toEqual(['Resumo', 'Clientes', 'Por categoria']);
+    expect(wb.title).toContain('01/10/2026 a 31/10/2026');
+    expect(wb.company).toBe('Fasterisk');
+    const r = wb.getWorksheet('Resumo')!;
+    const textos = Array.from(r.getSheetValues(), (l) => (Array.isArray(l) ? l.slice(1) : [])).flat();
+    // Indicadores: custo, enviadas, taxa de entrega e clientes com consumo.
+    expect(textos).toEqual(expect.arrayContaining(['CUSTO ESTIMADO', 250, 'MENSAGENS ENVIADAS', 500, 'TAXA DE ENTREGA', 1, 'CLIENTES COM CONSUMO']));
+    // Ranking: só quem tem custo, maior primeiro.
+    const linhaTop = Array.from(r.getSheetValues()).findIndex((l) => Array.isArray(l) && l[2] === 'Clínica São José');
+    expect(r.getRow(linhaTop).getCell(1).value).toBe(1);
+    expect(r.getRow(linhaTop).getCell(3).value).toBe(250);
+    // Por categoria: Marketing com as 99 mensagens e 100% do custo.
+    const linhaMkt = Array.from(r.getSheetValues()).findIndex((l) => Array.isArray(l) && l[2] === 'Marketing');
+    expect([3, 4, 5, 6].map((c) => r.getRow(linhaMkt).getCell(c).value)).toEqual([99, 1, 250, 1]);
   });
 });
