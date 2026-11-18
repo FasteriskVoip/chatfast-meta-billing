@@ -30,7 +30,8 @@ describe('desativar e reativar cliente', () => {
     expect(repo.contas[0]!.tokenCifrado).toBe(conta.tokenCifrado);
     expect(coletavel(repo.contas[0]!, c)).toBe(false);
     expect(repo.auditoria[0]!.acao).toBe('cliente.desativar');
-    const sessao = criarSessaoService({ repo, helena: helenaFake(), cifra: cifraFake, adminCompanyids: [], emitir: () => ({ token: '', exp: 0 }), cadastrarCliente: svc.criar });
+    const sessao = criarSessaoService({ repo, helena: helenaFake(), cifra: cifraFake, adminCompanyids: [], emitir: () => ({ token: '', exp: 0 }), cadastrarCliente: svc.criar,
+      trocarTokenCliente: (id, t, autor) => svc.atualizar(id, { tokenChatfast: t }, autor) });
     await expect(sessao.abrir(CID_A, 'x')).rejects.toMatchObject({ codigo: 'CLIENTE_INATIVO' });
   });
 

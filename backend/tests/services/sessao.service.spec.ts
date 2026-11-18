@@ -7,7 +7,7 @@ import { CID_A, CID_FASTERISK, RepoMemoria, cifraFake } from '../fakes.js';
 
 const agente: Agente = { id: 'agente-1', userId: 'user-1', nome: 'Ana', isOwner: false, profile: 'AGENT' };
 
-function montar(helena: Partial<HelenaGateway> = {}) {
+function montar(helena: Partial<HelenaGateway> = {}, log = { warn: vi.fn() }) {
   const repo = new RepoMemoria();
   const cliente = repo.addCliente({ companyid: CID_A });
   const h: HelenaGateway = {
@@ -20,8 +20,10 @@ function montar(helena: Partial<HelenaGateway> = {}) {
     repo, helena: h, cifra: cifraFake, adminCompanyids: [CID_FASTERISK],
     emitir: (d) => ({ token: `tok:${d.cid}:${d.uid}:${d.admin}`, exp: 0 }),
     cadastrarCliente: clientes.criar,
+    trocarTokenCliente: (id, t, autor) => clientes.atualizar(id, { tokenChatfast: t }, autor),
+    log,
   });
-  return { svc, repo, cliente, h };
+  return { svc, repo, cliente, h, log };
 }
 
 const codigo = (p: Promise<unknown>) => p.then(() => 'ok', (e: { codigo?: string }) => e.codigo);
@@ -129,5 +131,76 @@ describe('sessao.service.primeiroAcesso', () => {
     const { svc } = comAdmin();
     await svc.primeiroAcesso(CID_FASTERISK, 'adm-1', dados);
     expect(await codigo(svc.primeiroAcesso(CID_FASTERISK, 'adm-1', dados))).toBe('DUPLICADO');
+  });
+});
+
+describe('empresa de ADMIN_COMPANYIDS nunca fica trancada para fora', () => {
+  const admin: Agente = { id: 'adm-1', userId: 'u-adm', nome: 'Bia', isOwner: false, profile: 'Admin' };
+  const comAdmin = (helena: Partial<HelenaGateway> = {}) => {
+    const m = montar({
+      obterAgente: vi.fn(async (_t, id) => [agente, admin].find((a) => a.id === id) ?? null),
+      listarAgentes: vi.fn(async () => [agente, admin]),
+      ...helena,
+    });
+    const fasterisk = m.repo.addCliente({ companyid: CID_FASTERISK, nome: 'Fasterisk' });
+    return { ...m, fasterisk };
+  };
+
+  it('perfil "Admin" da Helena (PascalCase, como na documentação) é admin', async () => {
+    const { svc } = comAdmin();
+    expect((await svc.abrir(CID_FASTERISK, 'adm-1')).admin).toBe(true);
+  });
+
+  it('agente sem perfil Admin: entra sem admin e o motivo vai para o log', async () => {
+    const { svc, log } = comAdmin();
+    expect((await svc.abrir(CID_FASTERISK, 'agente-1')).admin).toBe(false);
+    expect(log.warn).toHaveBeenCalledWith(expect.objectContaining({ profile: 'AGENT', isOwner: false }), expect.any(String));
+  });
+
+  it('empresa admin desativada ainda entra (senão ninguém a reativa); cliente comum desativado não', async () => {
+    const { svc, fasterisk, cliente } = comAdmin();
+    fasterisk.status = 'INATIVO';
+    expect((await svc.abrir(CID_FASTERISK, 'adm-1')).admin).toBe(true);
+    cliente.status = 'INATIVO';
+    expect(await codigo(svc.abrir(CID_A, 'agente-1'))).toBe('CLIENTE_INATIVO');
+  });
+
+  it('token salvo recusado: a empresa admin recebe podeCadastrar e troca o token pela tela', async () => {
+    let tokenBom = 'token-novo-5678';
+    const { svc, fasterisk, repo } = comAdmin({
+      obterAgente: vi.fn(async (t, id) => {
+        if (t !== tokenBom) throw new ErroToken('recusado', 401);
+        return [agente, admin].find((a) => a.id === id) ?? null;
+      }),
+    });
+    await expect(svc.abrir(CID_FASTERISK, 'adm-1')).rejects.toMatchObject({ codigo: 'HELENA_RECUSOU_TOKEN', extra: { podeCadastrar: true } });
+    expect(fasterisk.alertaChatfast).toBe(true);
+    const s = await svc.primeiroAcesso(CID_FASTERISK, 'adm-1', { tokenChatfast: tokenBom });
+    expect(s.admin).toBe(true);
+    const c = repo.clientes.find((x) => x.companyid === CID_FASTERISK)!;
+    expect(c).toMatchObject({ alertaChatfast: false, tokenChatfastUltimos4: '5678' });
+    tokenBom = 'outro';
+  });
+
+  it('token recusado em cliente comum: sem podeCadastrar', async () => {
+    const { svc } = montar({ obterAgente: vi.fn(async () => { throw new ErroToken('recusado', 401); }) });
+    await expect(svc.abrir(CID_A, 'agente-1')).rejects.toMatchObject({ codigo: 'HELENA_RECUSOU_TOKEN', extra: { podeCadastrar: false } });
+  });
+
+  it('empresa admin cadastrada com token bom: primeiro acesso continua DUPLICADO', async () => {
+    const { svc } = comAdmin();
+    expect(await codigo(svc.primeiroAcesso(CID_FASTERISK, 'adm-1', { tokenChatfast: 'qualquer-coisa' }))).toBe('DUPLICADO');
+  });
+
+  it('"agente não encontrado" não fica preso no cache', async () => {
+    let existe = false;
+    const novo: Agente = { id: 'novo-1', userId: 'u-novo', nome: 'Novo', isOwner: false, profile: 'Admin' };
+    const { svc } = comAdmin({
+      obterAgente: vi.fn(async (_t, id) => (existe && id === novo.id ? novo : null)),
+      listarAgentes: vi.fn(async () => (existe ? [novo] : [])),
+    });
+    expect(await codigo(svc.abrir(CID_FASTERISK, 'novo-1'))).toBe('AGENTE_DESCONHECIDO');
+    existe = true;
+    expect((await svc.abrir(CID_FASTERISK, 'novo-1')).admin).toBe(true);
   });
 });

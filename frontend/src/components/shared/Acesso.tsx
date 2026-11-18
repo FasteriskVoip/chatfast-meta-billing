@@ -97,7 +97,8 @@ export function Acesso({ children, esqueleto }: {
 
   useEffect(abrir, [abrir]);
 
-  if (erro?.podeCadastrar) return <PrimeiroAcesso onPronto={setSessao} />;
+  // Empresa admin: sem cadastro → cadastra; token salvo recusado → troca o token. Nos dois casos, pela própria tela.
+  if (erro?.podeCadastrar) return <PrimeiroAcesso onPronto={setSessao} trocarToken={erro.codigo === 'HELENA_RECUSOU_TOKEN'} />;
   if (erro) {
     // Erro sem tela própria (ex.: servidor fora do ar): mostra a mensagem da API, com suporte e nova tentativa.
     const b = (erro.codigo && BLOQUEIOS[erro.codigo]) || {
@@ -110,10 +111,10 @@ export function Acesso({ children, esqueleto }: {
 }
 
 /**
- * Primeiro acesso da Fasterisk (empresa de ADMIN_COMPANYIDS ainda não cadastrada): o admin cadastra
- * a própria empresa aqui e já entra. O backend confere que quem cadastra é admin na Helena.
+ * Empresa de ADMIN_COMPANYIDS sem saída pelo admin: ainda não cadastrada (cadastra a própria empresa) ou com o
+ * token salvo recusado pela Helena (cola um token novo). O backend confere que quem faz é admin na Helena.
  */
-function PrimeiroAcesso({ onPronto }: { onPronto: (s: SessaoAberta) => void }) {
+function PrimeiroAcesso({ onPronto, trocarToken = false }: { onPronto: (s: SessaoAberta) => void; trocarToken?: boolean }) {
   const [f, setF] = useState({ nome: 'Fasterisk', tokenChatfast: '' });
   const [erro, setErro] = useState<string | null>(null);
   const [salvando, setSalvando] = useState(false);
@@ -123,7 +124,8 @@ function PrimeiroAcesso({ onPronto }: { onPronto: (s: SessaoAberta) => void }) {
     setSalvando(true);
     setErro(null);
     try {
-      onPronto(await cadastrarPrimeiroAcesso(f.nome, f.tokenChatfast));
+      // Na troca de token o nome não vai: o backend mantém o nome já cadastrado.
+      onPronto(await cadastrarPrimeiroAcesso(trocarToken ? '' : f.nome, f.tokenChatfast));
     } catch (err) {
       setErro(mensagemDeErro(err));
     } finally {
@@ -137,14 +139,18 @@ function PrimeiroAcesso({ onPronto }: { onPronto: (s: SessaoAberta) => void }) {
       <form onSubmit={salvar} className="entrar w-full max-w-md space-y-4 rounded-2xl border border-slate-200 bg-card p-6 shadow-sm">
         <div className="space-y-1">
           <h1 className="flex items-center gap-2 text-lg font-bold text-slate-800">
-            <Building2 className="size-5 text-blue-600" aria-hidden /> Primeiro acesso
+            <Building2 className="size-5 text-blue-600" aria-hidden /> {trocarToken ? 'Atualize o token Chatfast' : 'Primeiro acesso'}
           </h1>
           <p className="text-sm text-slate-500">
-            A sua empresa ainda não está cadastrada no Consumo Meta. Como administrador, cadastre-a para entrar no painel.
+            {trocarToken
+              ? 'O Chatfast recusou o token salvo da sua empresa (pode ter sido trocado ou revogado). Como administrador, cole um token novo para entrar.'
+              : 'A sua empresa ainda não está cadastrada no Consumo Meta. Como administrador, cadastre-a para entrar no painel.'}
           </p>
         </div>
-        <Campo id="pa-nome" rotulo="Nome da empresa" required maxLength={120} value={f.nome}
-          onChange={(e) => setF({ ...f, nome: e.target.value })} />
+        {!trocarToken && (
+          <Campo id="pa-nome" rotulo="Nome da empresa" required maxLength={120} value={f.nome}
+            onChange={(e) => setF({ ...f, nome: e.target.value })} />
+        )}
         <Campo id="pa-token" rotulo="Token Chatfast" type="password" autoComplete="off" required value={f.tokenChatfast}
           ajuda="Gerado no Chatfast em Integração via API. Serve para confirmar quem abre o painel."
           onChange={(e) => setF({ ...f, tokenChatfast: e.target.value })} erro={erroToken} />
@@ -152,7 +158,7 @@ function PrimeiroAcesso({ onPronto }: { onPronto: (s: SessaoAberta) => void }) {
           <p role="alert" className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">{erro}</p>
         )}
         <Button type="submit" className={`${PILULA} w-full`} disabled={salvando}>
-          {salvando ? 'Validando no Chatfast…' : 'Cadastrar e entrar'}
+          {salvando ? 'Validando no Chatfast…' : trocarToken ? 'Atualizar e entrar' : 'Cadastrar e entrar'}
         </Button>
       </form>
     </div>

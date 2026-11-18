@@ -24,7 +24,8 @@ const esquema = z.object({
   ADMIN_COMPANYIDS: z
     .string()
     .default('')
-    .transform((s) => s.split(',').map((x) => x.trim().toLowerCase()).filter(Boolean))
+    // Aceita vírgula, ponto e vírgula, espaço ou quebra de linha, com ou sem aspas (comum ao colar no Coolify).
+    .transform((s) => s.split(/[\s,;]+/).map((x) => x.replace(/^["']|["']$/g, '').toLowerCase()).filter(Boolean))
     .refine((l) => l.every((x) => uuid.test(x)), 'ADMIN_COMPANYIDS deve ser CSV de UUIDs'),
   CHAVE_CRIPTOGRAFIA: z
     .string()

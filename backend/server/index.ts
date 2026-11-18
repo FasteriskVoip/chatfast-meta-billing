@@ -65,6 +65,8 @@ const app = await criarApp({
     repo, helena, cifra, adminCompanyids: env.ADMIN_COMPANYIDS,
     emitir: (dados) => emitirSessao(dados, env.SEGREDO_SESSAO),
     cadastrarCliente: clientes.criar,
+    trocarTokenCliente: (id, tokenChatfast, autor) => clientes.atualizar(id, { tokenChatfast }, autor),
+    log: logger,
   }),
   dashboard,
   exportacao: criarExportacaoService({ dashboard, repo }),

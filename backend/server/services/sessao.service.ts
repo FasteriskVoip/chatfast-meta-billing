@@ -5,8 +5,8 @@ import type { ContaRepository } from '../domain/ports/repositorios.js';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-// ponytail: a Helena não documenta os valores de `profile` (research R-07). Confirmar com chamada real
-// na conta da Fasterisk (T042) e ajustar; isOwner já cobre o dono da conta.
+// Perfis da Helena (enum de POST/PUT /core/v1/agent): "Admin", "Agent", "RestrictedAgent". A resposta não
+// fixa o enum, então a comparação ignora caixa e aceita variações; isOwner cobre o dono da conta.
 export const PERFIS_ADMIN = new Set(['ADMIN', 'ADMINISTRATOR', 'ADMINISTRADOR']);
 
 export function ehAdmin(companyid: string, agente: Agente, adminCompanyids: string[]): boolean {
@@ -30,6 +30,10 @@ interface Deps {
   emitir: (d: { cid: string; uid: string; nome: string; admin: boolean }) => { token: string; exp: number };
   /** Cadastro de cliente do admin (clientes.service.criar): valida o token na Helena, cifra e audita. */
   cadastrarCliente: (dados: { nome: string; companyid: string; tokenChatfast: string }, autor: string) => Promise<unknown>;
+  /** Troca de token do admin (clientes.service.atualizar): valida na Helena, cifra, limpa o alerta e audita. */
+  trocarTokenCliente: (clienteId: string, tokenChatfast: string, autor: string) => Promise<unknown>;
+  /** Diagnóstico: por que alguém da empresa admin não foi reconhecido como admin. */
+  log?: { warn(o: object, msg: string): void };
   cacheMs?: number;
   agora?: () => number;
 }
@@ -51,7 +55,8 @@ export function criarSessaoService(d: Deps) {
       direto && (direto.id === userId || direto.userId === userId)
         ? direto
         : ((await d.helena.listarAgentes(token)).find((a) => a.id === userId || a.userId === userId) ?? null);
-    cache.set(chave, { agente, expira: agora() + ttl });
+    // Só guarda acerto: "não encontrado" não fica preso no cache (admin recém-criado entra na hora).
+    if (agente) cache.set(chave, { agente, expira: agora() + ttl });
     return agente;
   }
 
@@ -72,7 +77,11 @@ export function criarSessaoService(d: Deps) {
           podeCadastrar: d.adminCompanyids.includes(cid),
         });
       }
-      if (cliente.status === 'INATIVO') throw new ErroNegocio(403, 'CLIENTE_INATIVO', 'Conta desativada. Fale com a Fasterisk');
+      const empresaAdmin = d.adminCompanyids.includes(cid);
+      // A empresa admin nunca fica trancada para fora: desativada, ninguém mais conseguiria reativá-la.
+      if (cliente.status === 'INATIVO' && !empresaAdmin) {
+        throw new ErroNegocio(403, 'CLIENTE_INATIVO', 'Conta desativada. Fale com a Fasterisk');
+      }
 
       let agente: Agente | null;
       try {
@@ -80,7 +89,10 @@ export function criarSessaoService(d: Deps) {
       } catch (err) {
         if (err instanceof ErroToken) {
           if (!cliente.alertaChatfast) await d.repo.atualizarCliente(cliente.id, { alertaChatfast: true });
-          throw new ErroNegocio(502, 'HELENA_RECUSOU_TOKEN', 'Integração com o Chatfast precisa ser atualizada. Fale com a Fasterisk');
+          // Na empresa admin, um admin pode colar um token novo pela própria tela (primeiroAcesso).
+          throw new ErroNegocio(502, 'HELENA_RECUSOU_TOKEN', 'Integração com o Chatfast precisa ser atualizada. Fale com a Fasterisk', {
+            podeCadastrar: empresaAdmin,
+          });
         }
         if (err instanceof ErroIndisponivel) {
           throw new ErroNegocio(503, 'HELENA_INDISPONIVEL', 'Não foi possível validar seu acesso agora. Tente novamente');
@@ -91,6 +103,10 @@ export function criarSessaoService(d: Deps) {
       if (cliente.alertaChatfast) await d.repo.atualizarCliente(cliente.id, { alertaChatfast: false });
 
       const admin = ehAdmin(cid, agente, d.adminCompanyids);
+      if (empresaAdmin && !admin) {
+        d.log?.warn({ companyid: cid, userId: uid, profile: agente.profile, isOwner: agente.isOwner },
+          'empresa em ADMIN_COMPANYIDS, mas o agente não é dono nem tem perfil Admin na Helena');
+      }
       const { token, exp } = d.emitir({ cid, uid, nome: agente.nome, admin });
       return { token, expiraEm: new Date(exp).toISOString(), nome: agente.nome, admin, empresa: { nome: cliente.nome } };
     },
@@ -98,6 +114,7 @@ export function criarSessaoService(d: Deps) {
     /**
      * Primeiro acesso: a sessão só abre para empresa cadastrada, e o cadastro fica no /admin.
      * Só empresas de ADMIN_COMPANYIDS se cadastram por aqui, e só um admin delas na Helena (validado com o token informado).
+     * Também destrava a empresa admin já cadastrada cujo token salvo a Helena recusou (troca o token).
      */
     async primeiroAcesso(
       companyid: string | undefined, userId: string | undefined, dados: { nome?: string; tokenChatfast?: string },
@@ -106,8 +123,10 @@ export function criarSessaoService(d: Deps) {
       if (!d.adminCompanyids.includes(cid)) {
         throw new ErroNegocio(403, 'SEM_PERMISSAO', 'Cadastro pela tela só para a Fasterisk. Fale com a Fasterisk');
       }
-      if (await d.repo.clientePorCompanyid(cid)) throw new ErroNegocio(409, 'DUPLICADO', 'Empresa já cadastrada');
-      const nome = dados.nome?.trim();
+      const existente = await d.repo.clientePorCompanyid(cid);
+      // Já cadastrada: só passa se o token salvo foi recusado pela Helena (alertaChatfast); senão é duplicado.
+      if (existente && !existente.alertaChatfast) throw new ErroNegocio(409, 'DUPLICADO', 'Empresa já cadastrada');
+      const nome = dados.nome?.trim() || existente?.nome;
       const tokenChatfast = dados.tokenChatfast?.trim();
       if (!nome || !tokenChatfast) throw new ErroNegocio(400, 'VALIDACAO', 'Informe o nome e o token Chatfast');
 
@@ -124,7 +143,8 @@ export function criarSessaoService(d: Deps) {
       if (!agente || !ehAdmin(cid, agente, d.adminCompanyids)) {
         throw new ErroNegocio(403, 'SEM_PERMISSAO', 'Só um administrador da conta pode fazer o cadastro');
       }
-      await d.cadastrarCliente({ nome, companyid: cid, tokenChatfast }, uid);
+      if (existente) await d.trocarTokenCliente(existente.id, tokenChatfast, uid);
+      else await d.cadastrarCliente({ nome, companyid: cid, tokenChatfast }, uid);
       return service.abrir(cid, uid);
     },
   };

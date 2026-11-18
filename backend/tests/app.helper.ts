@@ -64,6 +64,7 @@ export async function montarApp(o: {
       repo, helena, cifra: cifraFake, adminCompanyids: [CID_FASTERISK],
       emitir: (d) => emitirSessao(d, SEGREDO),
       cadastrarCliente: clientes.criar,
+      trocarTokenCliente: (id, t, autor) => clientes.atualizar(id, { tokenChatfast: t }, autor),
     }),
     dashboard,
     exportacao: criarExportacaoService({ dashboard, repo }),
