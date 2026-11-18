@@ -12,7 +12,9 @@ type CotacaoRow = Awaited<ReturnType<Prisma['cotacao']['findFirstOrThrow']>>;
 const cliente = (r: ClienteRow): ClienteRegistro => ({
   id: r.id, companyid: r.companyid, nome: r.nome, status: r.status,
   tokenChatfastCifrado: r.tokenChatfastCifrado, tokenChatfastUltimos4: r.tokenChatfastUltimos4,
-  inativoDesde: deDataNula(r.inativoDesde), alertaChatfast: r.alertaChatfast,
+  inativoDesde: deDataNula(r.inativoDesde), alertaChatfast: r.alertaChatfast, taxi: r.taxi,
+  limiteDiarioBrl: r.limiteDiarioBrl?.toFixed(2) ?? null, limiteMensalBrl: r.limiteMensalBrl?.toFixed(2) ?? null,
+  alertaDiarioEm: deDataNula(r.alertaDiarioEm), alertaMensalEm: deDataNula(r.alertaMensalEm),
 });
 const conta = (r: ContaRow): ContaRegistro => ({
   id: r.id, clienteId: r.clienteId, companyid: r.companyid, wabaId: r.wabaId, nome: r.nome,
@@ -33,7 +35,7 @@ const cotacao = (r: CotacaoRow): CotacaoRegistro => ({
 /** Converte os campos 'YYYY-MM-DD' do domínio para Date antes de gravar. */
 function comDatas<T extends object>(patch: T): Record<string, unknown> {
   const out = { ...patch } as Record<string, unknown>;
-  for (const k of ['inativoDesde', 'historicoDesde'] as const) {
+  for (const k of ['inativoDesde', 'historicoDesde', 'alertaDiarioEm', 'alertaMensalEm'] as const) {
     if (k in out) out[k] = out[k] ? paraData(out[k] as string) : null;
   }
   return out;

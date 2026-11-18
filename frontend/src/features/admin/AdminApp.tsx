@@ -1,12 +1,15 @@
 import { useCallback, useEffect, useState } from 'react';
-import { BarChart3, DollarSign, Users } from 'lucide-react';
+import { BarChart3, DollarSign, ShieldX, Users } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
-import { Acesso } from '@/components/shared/Acesso';
+import { Acesso, TelaBloqueio } from '@/components/shared/Acesso';
+import { EsqueletoAdmin } from '@/components/shared/Esqueletos';
+import { TOM } from '@/components/shared/tons';
 import { api, mensagemDeErro, type SessaoAberta } from '@/lib/api';
 import { telaPersistida } from '@/lib/telaPersistida';
 import { Cotacoes } from './Cotacoes';
 import { DetalheCliente } from './DetalheCliente';
 import { ListaClientes } from './ListaClientes';
+import { SeletorCliente } from './SeletorCliente';
 import type { Painel as DadosPainel } from './tipos';
 
 type Aba = 'clientes' | 'cotacao';
@@ -39,9 +42,15 @@ function Painel({ sessao }: { sessao: SessaoAberta }) {
               <h1 className="text-2xl leading-tight font-bold text-slate-800">Consumo Meta</h1>
               <p className="text-xs text-slate-500">Administração dos clientes, contas WABA e cotação</p>
             </div>
-            <div className="flex flex-wrap gap-1.5">
-              <Badge>Administrador</Badge>
-              <Badge className="bg-slate-100 text-slate-500">{sessao.empresa.nome}</Badge>
+            <div className="flex flex-wrap items-end gap-4">
+              <div className="flex flex-wrap gap-1.5 self-center">
+                <Badge>Administrador</Badge>
+                <Badge className="bg-slate-100 text-slate-500">{sessao.empresa.nome}</Badge>
+              </div>
+              <div className="grid gap-1">
+                <span id="seletor-cliente-admin" className="text-[11px] font-semibold tracking-wide text-slate-400 uppercase">Ver dashboard de</span>
+                <SeletorCliente rotuloId="seletor-cliente-admin" />
+              </div>
             </div>
           </div>
           <nav role="tablist" aria-label="Seções do admin" className="flex gap-1 overflow-x-auto border-t border-slate-100 px-4 py-2">
@@ -74,7 +83,7 @@ function Painel({ sessao }: { sessao: SessaoAberta }) {
         {aba === 'cotacao' ? (
           painel && <Cotacoes painel={painel} onAlterada={carregarPainel} />
         ) : clienteId ? (
-          <DetalheCliente clienteId={clienteId} onVoltar={() => setClienteId(null)} onAlterada={carregarPainel} />
+          <DetalheCliente clienteId={clienteId} alertasAtivos={painel?.alertasAtivos ?? false} onVoltar={() => setClienteId(null)} onAlterada={carregarPainel} />
         ) : (
           <ListaClientes painel={painel} onAbrir={setClienteId} />
         )}
@@ -85,8 +94,11 @@ function Painel({ sessao }: { sessao: SessaoAberta }) {
 
 export default function AdminApp() {
   return (
-    <Acesso>
-      {(s) => (s.admin ? <Painel sessao={s} /> : <p className="p-8 text-center text-base text-slate-600">Sem permissão de administrador.</p>)}
+    <Acesso esqueleto={<EsqueletoAdmin texto="Validando acesso…" />}>
+      {(s) => (s.admin ? <Painel sessao={s} /> : (
+        <TelaBloqueio titulo="Área restrita" icone={ShieldX} tom={TOM.neutro} suporte
+          texto="Esta área é só para a administração da Fasterisk. O consumo da sua conta está no painel Consumo Meta." />
+      ))}
     </Acesso>
   );
 }

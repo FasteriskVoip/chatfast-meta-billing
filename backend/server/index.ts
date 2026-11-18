@@ -6,11 +6,13 @@ import { criarHelenaGateway } from './adapters/helena/helenaGateway.js';
 import { criarApp } from './adapters/http/app.js';
 import { emitirSessao } from './adapters/http/sessao.js';
 import { criarMetaGateway } from './adapters/meta/metaGraphGateway.js';
+import { criarWebhookAlertas } from './adapters/n8n/webhookAlertas.js';
 import { prisma } from './adapters/persistence/prisma/client.js';
 import { criarConsumoRepository } from './adapters/persistence/prisma/consumoRepository.js';
 import { criarContaRepository } from './adapters/persistence/prisma/contaRepository.js';
 import { env } from './config/env.js';
 import { logger, serializarErro, urlSemQuery } from './logger.js';
+import { criarAlertasService } from './services/alertas.service.js';
 import { criarClientesService } from './services/clientes.service.js';
 import { criarContasService } from './services/contas.service.js';
 import { criarCotacoesService } from './services/cotacoes.service.js';
@@ -43,7 +45,12 @@ const sync = criarSyncService({
   cfg: { diasBackfill: env.SYNC_DIAS_BACKFILL, diasReprocesso: env.SYNC_DIAS_REPROCESSO },
 });
 const dashboard = criarDashboardService({ repo, consumo, sync, emSegundoPlano });
-const clientes = criarClientesService({ repo, helena, cifra, sync, emSegundoPlano });
+const clientes = criarClientesService({ repo, helena, cifra, sync, emSegundoPlano, alertasAtivos: Boolean(env.N8N_WEBHOOK_ALERTAS) });
+const alertas = criarAlertasService({
+  repo, dashboard, log: logger, serializarErro,
+  notificador: env.N8N_WEBHOOK_ALERTAS ? criarWebhookAlertas(env.N8N_WEBHOOK_ALERTAS) : null,
+});
+if (!env.N8N_WEBHOOK_ALERTAS) logger.info('N8N_WEBHOOK_ALERTAS vazio: alertas de consumo desligados');
 
 const app = await criarApp({
   cfg: {
@@ -79,6 +86,8 @@ cron.schedule(
     tickRodando = true;
     try {
       await sync.executarTick();
+      // Com os dados recém-coletados, confere os limites de consumo de cada cliente.
+      await alertas.verificar().catch((err: unknown) => logger.error({ err: serializarErro(err) }, 'verificação de alertas falhou'));
     } finally {
       tickRodando = false;
     }

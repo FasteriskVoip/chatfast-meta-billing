@@ -12,6 +12,14 @@ export interface ClienteRegistro {
   tokenChatfastUltimos4: string;
   inativoDesde: DataISO | null;
   alertaChatfast: boolean;
+  /** Segmento "Cliente Taxi": filtro no admin e no relatório; só esses clientes recebem alertas de consumo. */
+  taxi: boolean;
+  /** Alertas de consumo em R$ (decimal em string); null = sem alerta. */
+  limiteDiarioBrl: string | null;
+  limiteMensalBrl: string | null;
+  /** Último dia (diário) e primeiro dia do mês (mensal) em que o alerta foi enviado. */
+  alertaDiarioEm: DataISO | null;
+  alertaMensalEm: DataISO | null;
 }
 
 export interface ContaRegistro {
@@ -76,7 +84,7 @@ export interface NovaAuditoria {
   dados: Record<string, unknown>;
 }
 
-export type NovoCliente = Pick<ClienteRegistro, 'companyid' | 'nome' | 'tokenChatfastCifrado' | 'tokenChatfastUltimos4'>;
+export type NovoCliente = Pick<ClienteRegistro, 'companyid' | 'nome' | 'tokenChatfastCifrado' | 'tokenChatfastUltimos4'> & { taxi?: boolean };
 export type NovaConta = Pick<
   ContaRegistro,
   'clienteId' | 'companyid' | 'wabaId' | 'nome' | 'tokenCifrado' | 'tokenUltimos4' | 'tokenExpiraEm' | 'moeda' | 'fuso'

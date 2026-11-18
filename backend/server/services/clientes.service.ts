@@ -11,7 +11,8 @@ import type { SyncService } from './sync.service.js';
 
 const clienteView = (c: ClienteRegistro) => ({
   id: c.id, nome: c.nome, companyid: c.companyid, status: c.status,
-  tokenChatfastUltimos4: c.tokenChatfastUltimos4, alertaChatfast: c.alertaChatfast,
+  tokenChatfastUltimos4: c.tokenChatfastUltimos4, alertaChatfast: c.alertaChatfast, taxi: c.taxi,
+  limiteDiarioBrl: c.limiteDiarioBrl, limiteMensalBrl: c.limiteMensalBrl,
 });
 
 interface Deps {
@@ -20,6 +21,8 @@ interface Deps {
   cifra: Cifra;
   sync: Pick<SyncService, 'sincronizarConta'>;
   emSegundoPlano: (p: () => Promise<unknown>) => void;
+  /** N8N_WEBHOOK_ALERTAS configurado: sem ele, os limites ficam salvos mas nenhum alerta sai. */
+  alertasAtivos?: boolean;
   agora?: () => Date;
 }
 
@@ -81,20 +84,21 @@ export function criarClientesService(d: Deps) {
         contasComProblema: contas.filter((c) => c.status === 'TOKEN_INVALIDO' || c.status === 'ERRO_SYNC' || c.status === 'TOKEN_EXPIRANDO').length,
         cotacaoVigente: vigente && { valor: vigente.valor, vigenteDesde: vigente.vigenteDesde },
         semCotacao: cotacoes.length === 0,
+        alertasAtivos: d.alertasAtivos ?? false,
       };
     },
 
-    async criar(dados: { nome: string; companyid: string; tokenChatfast: string }, autor: string) {
+    async criar(dados: { nome: string; companyid: string; tokenChatfast: string; taxi?: boolean }, autor: string) {
       const companyid = dados.companyid.toLowerCase();
       if (await d.repo.clientePorCompanyid(companyid)) throw new ErroNegocio(409, 'DUPLICADO', 'Empresa já cadastrada');
       await validarTokenChatfast(dados.tokenChatfast);
       const c = await d.repo.criarCliente({
-        companyid, nome: dados.nome.trim(),
+        companyid, nome: dados.nome.trim(), taxi: dados.taxi ?? false,
         tokenChatfastCifrado: d.cifra.cifrar(dados.tokenChatfast), tokenChatfastUltimos4: dados.tokenChatfast.slice(-4),
       });
       await registrarAuditoria(d.repo, {
         companyid, userId: autor, acao: 'cliente.criar', entidade: 'cliente', entidadeId: c.id,
-        dados: { nome: c.nome, tokenChatfast: dados.tokenChatfast },
+        dados: { nome: c.nome, taxi: c.taxi, tokenChatfast: dados.tokenChatfast },
       });
       return clienteView(c);
     },
@@ -105,15 +109,34 @@ export function criarClientesService(d: Deps) {
       return {
         ...clienteView(c),
         inativoDesde: c.inativoDesde,
+        alertaDiarioEm: c.alertaDiarioEm,
+        alertaMensalEm: c.alertaMensalEm,
         contas: await Promise.all(contas.map(async (x) => contaView(x, await d.repo.numerosDaConta(x.id)))),
       };
     },
 
-    async atualizar(id: string, p: { nome?: string; tokenChatfast?: string; status?: 'ATIVO' | 'INATIVO' }, autor: string) {
+    async atualizar(
+      id: string,
+      p: {
+        nome?: string; tokenChatfast?: string; status?: 'ATIVO' | 'INATIVO'; taxi?: boolean;
+        limiteDiarioBrl?: string | null; limiteMensalBrl?: string | null;
+      },
+      autor: string,
+    ) {
       const c = await obter(id);
       const patch: Parameters<ContaRepository['atualizarCliente']>[1] = {};
       const audit: Record<string, unknown> = {};
       if (p.nome !== undefined) patch.nome = audit.nome = p.nome.trim();
+      if (p.taxi !== undefined) patch.taxi = audit.taxi = p.taxi;
+      // Limite novo (ou removido) zera o "já enviado": o novo valor pode disparar ainda no mesmo dia/mês.
+      // O form manda os dois limites; zera só o "já enviado" do que mudou de valor (senão o outro alerta sai de novo).
+      const mudou = (novo: string | null, atual: string | null) => (novo === null || atual === null ? novo !== atual : Number(novo) !== Number(atual));
+      if (p.limiteDiarioBrl !== undefined && mudou(p.limiteDiarioBrl, c.limiteDiarioBrl)) {
+        Object.assign(patch, { limiteDiarioBrl: (audit.limiteDiarioBrl = p.limiteDiarioBrl), alertaDiarioEm: null });
+      }
+      if (p.limiteMensalBrl !== undefined && mudou(p.limiteMensalBrl, c.limiteMensalBrl)) {
+        Object.assign(patch, { limiteMensalBrl: (audit.limiteMensalBrl = p.limiteMensalBrl), alertaMensalEm: null });
+      }
       if (p.tokenChatfast) {
         await validarTokenChatfast(p.tokenChatfast);
         Object.assign(patch, {
@@ -127,7 +150,9 @@ export function criarClientesService(d: Deps) {
       if (desativando) Object.assign(patch, { status: 'INATIVO', inativoDesde: hojeNoFuso(agora(), FUSO_PADRAO) });
       if (reativando) patch.status = 'ATIVO';
       const atualizado = await d.repo.atualizarCliente(id, patch);
-      const acao = desativando ? 'cliente.desativar' : reativando ? 'cliente.reativar' : p.tokenChatfast ? 'cliente.trocar_token_chatfast' : 'cliente.editar';
+      const alertas = p.limiteDiarioBrl !== undefined || p.limiteMensalBrl !== undefined;
+      const acao = desativando ? 'cliente.desativar' : reativando ? 'cliente.reativar' : p.tokenChatfast ? 'cliente.trocar_token_chatfast'
+        : alertas ? 'cliente.alertas' : 'cliente.editar';
       await registrarAuditoria(d.repo, { companyid: c.companyid, userId: autor, acao, entidade: 'cliente', entidadeId: id, dados: audit });
       if (reativando) d.emSegundoPlano(() => reprocessarReativado(atualizado));
       return clienteView(atualizado);

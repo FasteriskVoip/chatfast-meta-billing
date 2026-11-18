@@ -25,7 +25,9 @@ function cenario() {
 }
 
 const q = 'de=2026-11-01&ate=2026-11-03';
-const VAZAMENTO = /WABA-SEGREDO-B|NOME-B|9999-9999|777|999/;
+// 777/999 só como número isolado: os IDs aleatórios (UUID, wabaId) às vezes contêm "777" ou "999" no meio
+// e davam falso vazamento em ~1-2% das execuções.
+const VAZAMENTO = /WABA-SEGREDO-B|NOME-B|9999-9999|\b777\b|\b999\b/;
 
 describe('isolamento entre empresas', () => {
   it.each(['/api/dashboard/filtros', '/api/dashboard/status', `/api/dashboard/resumo?${q}`])('%s da empresa A não contém B', async (url) => {

@@ -5,10 +5,10 @@ import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '
 import { api, mensagemDeErro } from '@/lib/api';
 import { Building2 } from 'lucide-react';
 import { PILULA } from '@/components/shared/visual';
-import { Campo, erroDoCampo } from './Formulario';
+import { Campo, CampoChave, erroDoCampo } from './Formulario';
 
 export function FormCliente({ aberto, onFechar, onSalvo }: { aberto: boolean; onFechar: () => void; onSalvo: () => void }) {
-  const [f, setF] = useState({ nome: '', companyid: '', tokenChatfast: '' });
+  const [f, setF] = useState({ nome: '', companyid: '', tokenChatfast: '', taxi: false });
   const [erro, setErro] = useState<string | null>(null);
   const [salvando, setSalvando] = useState(false);
 
@@ -19,7 +19,7 @@ export function FormCliente({ aberto, onFechar, onSalvo }: { aberto: boolean; on
     try {
       await api.post('/admin/clientes', f);
       toast.success('Cliente cadastrado');
-      setF({ nome: '', companyid: '', tokenChatfast: '' });
+      setF({ nome: '', companyid: '', tokenChatfast: '', taxi: false });
       onSalvo();
     } catch (err) {
       setErro(mensagemDeErro(err));
@@ -39,6 +39,8 @@ export function FormCliente({ aberto, onFechar, onSalvo }: { aberto: boolean; on
             onChange={(e) => setF({ ...f, companyid: e.target.value.trim() })} erro={erroDoCampo(erro, 'companyid')} />
           <Campo id="tokenChatfast" rotulo="Token Chatfast" ajuda="Gerado no Chatfast do cliente, em Integração via API. Serve para confirmar quem abre o dashboard." type="password" autoComplete="off" required
             value={f.tokenChatfast} onChange={(e) => setF({ ...f, tokenChatfast: e.target.value })} erro={erroDoCampo(erro, 'tokenChatfast')} />
+          <CampoChave id="novo-taxi" rotulo="Cliente Taxi" checked={f.taxi} onChange={(v) => setF({ ...f, taxi: v })}
+            descricao='Entra no filtro "Taxi" do admin e do relatório. Só clientes Taxi recebem alertas de consumo.' />
           {geral && <p role="alert" className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">{geral}</p>}
           <DialogFooter>
             <button type="button" className="rounded-lg px-3 py-2 text-sm text-slate-500 hover:text-slate-700" onClick={onFechar}>Cancelar</button>

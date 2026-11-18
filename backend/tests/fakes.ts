@@ -31,7 +31,8 @@ export class RepoMemoria implements ContaRepository {
     const c: ClienteRegistro = {
       id: randomUUID(), companyid: CID_A, nome: 'Empresa Teste', status: 'ATIVO',
       tokenChatfastCifrado: cifraFake.cifrar('chatfast-token-1234'), tokenChatfastUltimos4: '1234',
-      inativoDesde: null, alertaChatfast: false, ...p,
+      inativoDesde: null, alertaChatfast: false, taxi: false,
+      limiteDiarioBrl: null, limiteMensalBrl: null, alertaDiarioEm: null, alertaMensalEm: null, ...p,
     };
     this.clientes.push(c);
     return c;

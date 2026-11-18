@@ -1,7 +1,10 @@
 import ExcelJS from 'exceljs';
 import { ehCobrada, grupoDaCategoria } from '../domain/consumo/categorias.js';
 import { converter, cotacaoDoDia, deMicro } from '../domain/consumo/cotacao.js';
+import { hojeNoFuso } from '../domain/consumo/periodo.js';
 import { custoEstimadoBrl } from '../domain/consumo/precos.js';
+import { ErroNegocio } from '../domain/ports/erros.js';
+import { FUSO_PADRAO } from '../domain/sync/normalizacao.js';
 import type { ContaRepository } from '../domain/ports/repositorios.js';
 import type { Grupo } from '../domain/tipos.js';
 import type { DashboardService, FiltrosDashboard } from './dashboard.service.js';
@@ -19,11 +22,79 @@ const valorOuTexto = (v: string | null, situacao: string) => (v === null ? SITUA
 
 const pct = (v: number | null) => (v === null ? '—' : Math.round(v * 1000) / 10);
 
+/** 'AAAA-MM' → do dia 1 até o fim do mês (ou até hoje, no mês corrente). Sem mês: o mês corrente. */
+export function periodoDoMes(mes: string | undefined, hoje: string) {
+  const m = mes ?? hoje.slice(0, 7);
+  const [ano, mesNum] = m.split('-').map(Number) as [number, number];
+  const de = `${m}-01`;
+  if (de > hoje) throw new ErroNegocio(400, 'VALIDACAO', 'mes: o mês ainda não começou');
+  const fim = new Date(Date.UTC(ano, mesNum, 0)).toISOString().slice(0, 10);
+  return { mes: m, de, ate: fim < hoje ? fim : hoje };
+}
+
 export function criarExportacaoService(d: {
   dashboard: Pick<DashboardService, 'dadosResumo'>;
-  repo: Pick<ContaRepository, 'clientePorCompanyid'>;
+  repo: Pick<ContaRepository, 'clientePorCompanyid' | 'listarClientes'>;
+  agora?: () => Date;
 }) {
+  const agora = d.agora ?? (() => new Date());
+
+  /** Consumo de todos os clientes num mês (admin): o mesmo cálculo do dashboard de cada um. */
+  async function consumoDosClientes(mes?: string, taxi?: boolean) {
+    const periodo = periodoDoMes(mes, hojeNoFuso(agora(), FUSO_PADRAO));
+    const alvo = (await d.repo.listarClientes()).filter((x) => taxi === undefined || x.taxi === taxi);
+    // Em paralelo (o pool do Prisma limita as conexões). ponytail: um resumo por cliente; com centenas, agregar numa consulta só.
+    const clientes = await Promise.all(alvo.map(async (c) => {
+      const { resumo, contas } = await d.dashboard.dadosResumo(c.companyid, { de: periodo.de, ate: periodo.ate });
+      return {
+        clienteId: c.id, nome: c.nome, companyid: c.companyid, status: c.status, taxi: c.taxi, contas: contas.length,
+        mensagens: resumo.total.volume, cobradas: resumo.total.cobradas, gratuitas: resumo.total.volume - resumo.total.cobradas,
+        custoBrl: resumo.total.custoBrl, custoSituacao: resumo.total.custoSituacao,
+      };
+    }));
+    // Soma só os custos conhecidos; nenhum conhecido = ausente (null), nunca 0. Um lugar só para tela e relatório.
+    const conhecidos = clientes.filter((c) => c.custoBrl !== null);
+    const total = {
+      custoBrl: conhecidos.length ? conhecidos.reduce((t, c) => t + Number(c.custoBrl), 0).toFixed(2) : null,
+      incompleto: clientes.some((c) => c.custoSituacao !== 'completo'),
+    };
+    return { periodo, clientes, total };
+  }
+
   return {
+    consumoDosClientes,
+
+    /** Relatório do admin: uma linha por cliente no mês, com o total. */
+    async relatorioClientesXlsx(mes?: string, taxi?: boolean): Promise<{ arquivo: Buffer; nome: string }> {
+      const { periodo, clientes, total } = await consumoDosClientes(mes, taxi);
+      const wb = new ExcelJS.Workbook();
+      wb.creator = 'Consumo Meta';
+      const s = wb.addWorksheet('Clientes');
+      s.addRows([
+        ['Consumo WhatsApp Cloud API: todos os clientes'],
+        ['Período', `${periodo.de} a ${periodo.ate}`],
+        ['Clientes', taxi === undefined ? 'Todos' : taxi ? 'Só clientes Taxi' : 'Só clientes que não são Taxi'],
+        ['Observação', 'Custo em R$ estimado pela cotação vigente em cada dia; a cobrança oficial é a fatura da Meta'],
+        [],
+        ['Cliente', 'companyid', 'Status', 'Taxi', 'Contas WABA', 'Mensagens', 'Cobradas', 'Gratuitas', 'Custo R$', 'Situação do custo'],
+      ]);
+      for (const c of clientes) {
+        s.addRow([c.nome, c.companyid, c.status === 'ATIVO' ? 'Ativo' : 'Inativo', c.taxi ? 'Sim' : 'Não', c.contas, c.mensagens, c.cobradas, c.gratuitas,
+          valorOuTexto(c.custoBrl, c.custoSituacao), SITUACAO[c.custoSituacao]]);
+      }
+      const soma = (k: 'mensagens' | 'cobradas' | 'gratuitas') => clientes.reduce((t, c) => t + c[k], 0);
+      s.addRow(['Total', '', '', '', clientes.reduce((t, c) => t + c.contas, 0), soma('mensagens'), soma('cobradas'), soma('gratuitas'),
+        total.custoBrl === null ? 'indisponível' : Number(total.custoBrl),
+        total.custoBrl === null ? 'nenhum cliente com custo' : total.incompleto ? 'parcial (há clientes sem custo completo)' : 'completo']);
+      s.getRow(6).font = { bold: true };
+      s.lastRow!.font = { bold: true };
+      s.getColumn(9).numFmt = '"R$" #,##0.00';
+      s.columns.forEach((col, i) => (col.width = [28, 38, 10, 8, 12, 12, 12, 12, 14, 40][i]));
+      const sufixo = taxi === undefined ? '' : taxi ? '-taxi' : '-nao-taxi';
+      return { arquivo: Buffer.from(await wb.xlsx.writeBuffer()), nome: `consumo-clientes${sufixo}-${periodo.mes}.xlsx` };
+    },
+
+
     async xlsx(companyid: string, f: FiltrosDashboard): Promise<{ arquivo: Buffer; nome: string }> {
       const empresa = (await d.repo.clientePorCompanyid(companyid))?.nome ?? companyid;
       const { resumo, contas, consumo, cotacoes, infos, ultimoSync } = await d.dashboard.dadosResumo(companyid, f);

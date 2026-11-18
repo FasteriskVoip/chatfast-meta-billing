@@ -7,6 +7,8 @@ const ID = randomUUID();
 const ROTAS: [string, string][] = [
   ['GET', '/api/admin/painel'],
   ['GET', '/api/admin/clientes'],
+  ['GET', '/api/admin/consumo'],
+  ['GET', '/api/admin/relatorio.xlsx'],
   ['POST', '/api/admin/clientes'],
   ['GET', `/api/admin/clientes/${ID}`],
   ['PATCH', `/api/admin/clientes/${ID}`],

@@ -10,12 +10,16 @@ import { formatarData } from '@/components/shared/formatos';
 import { TOM } from '@/components/shared/tons';
 import { Vazio } from '@/components/shared/Vazio';
 import { api, mensagemDeErro } from '@/lib/api';
+import { AlertasConsumo } from './AlertasConsumo';
 import { ContaWaba } from './ContaWaba';
 import { FormConta } from './FormConta';
 import { PILULA, TituloCartao } from '@/components/shared/visual';
+import { CampoChave } from './Formulario';
 import { linkVerDashboard, type ClienteDetalhe } from './tipos';
 
-export function DetalheCliente({ clienteId, onVoltar, onAlterada }: { clienteId: string; onVoltar: () => void; onAlterada: () => void }) {
+export function DetalheCliente({ clienteId, alertasAtivos, onVoltar, onAlterada }: {
+  clienteId: string; alertasAtivos: boolean; onVoltar: () => void; onAlterada: () => void;
+}) {
   const [c, setC] = useState<ClienteDetalhe | null>(null);
   const [erro, setErro] = useState<string | null>(null);
   const [novaConta, setNovaConta] = useState(false);
@@ -59,6 +63,7 @@ export function DetalheCliente({ clienteId, onVoltar, onAlterada }: { clienteId:
               {inativo
                 ? <Badge className={TOM.neutro}>Inativo desde {c.inativoDesde ? formatarData(c.inativoDesde) : '—'}</Badge>
                 : <Badge className={TOM.sucesso}>Ativo</Badge>}
+              {c.taxi && <Badge className={TOM.marca}>Taxi</Badge>}
             </h2>
             <p className="text-xs text-slate-400">companyid <span className={`rounded px-1.5 py-0.5 font-mono ${TOM.neutro}`}>{c.companyid}</span></p>
           </div>
@@ -78,6 +83,12 @@ export function DetalheCliente({ clienteId, onVoltar, onAlterada }: { clienteId:
               <Power aria-hidden /> {inativo ? 'Reativar' : 'Desativar'}
             </Button>
           </div>
+        </div>
+
+        <div className="max-w-md">
+          <CampoChave id="detalhe-taxi" rotulo="Cliente Taxi" checked={c.taxi}
+            descricao='Entra no filtro "Taxi" do admin e do relatório. Só clientes Taxi recebem alertas de consumo.'
+            onChange={(v) => void patch({ taxi: v }, v ? 'Marcado como Cliente Taxi' : 'Desmarcado como Cliente Taxi')} />
         </div>
 
         {c.alertaChatfast && (
@@ -102,6 +113,22 @@ export function DetalheCliente({ clienteId, onVoltar, onAlterada }: { clienteId:
             <Button type="submit" variant="outline">Trocar token</Button>
           </div>
         </form>
+
+        <AlertasConsumo
+          key={`${c.limiteDiarioBrl}|${c.limiteMensalBrl}`}
+          cliente={c}
+          alertasAtivos={alertasAtivos}
+          onSalvar={async (limites) => {
+            try {
+              await api.patch(`/admin/clientes/${clienteId}`, limites);
+              toast.success('Limites de alerta salvos');
+              carregar();
+              return null;
+            } catch (e) {
+              return mensagemDeErro(e);
+            }
+          }}
+        />
       </section>
 
       <div className="entrar flex flex-wrap items-center justify-between gap-3" style={{ animationDelay: '60ms' }}>

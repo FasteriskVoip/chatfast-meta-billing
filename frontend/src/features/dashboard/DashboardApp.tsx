@@ -1,14 +1,18 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { BarChart3, Inbox, Info, Loader2, TriangleAlert } from 'lucide-react';
+import { ArrowLeft, BarChart3, Inbox, Info, Loader2, ShieldCheck, TriangleAlert } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { TOM } from '@/components/shared/tons';
 import { Vazio } from '@/components/shared/Vazio';
 import { CARTAO, atraso } from '@/components/shared/visual';
 import { Acesso } from '@/components/shared/Acesso';
+import { EsqueletoConteudoDashboard, EsqueletoDashboard, EsqueletoFiltros } from '@/components/shared/Esqueletos';
 import { formatarData, formatarDataHora, tempoRelativo } from '@/components/shared/formatos';
 import { api, mensagemDeErro, type SessaoAberta } from '@/lib/api';
 import { telaPersistida } from '@/lib/telaPersistida';
+import { SeletorCliente } from '@/features/admin/SeletorCliente';
+import { linkAdmin } from '@/features/admin/tipos';
 import { BotaoSincronizar } from './BotaoSincronizar';
 import { BotoesExportar } from './BotoesExportar';
 import { CardsCategoria } from './CardsCategoria';
@@ -88,6 +92,21 @@ function DashboardPage({ sessao }: { sessao: SessaoAberta }) {
   return (
     <div className="min-h-screen p-4 sm:p-6 print:min-h-0 print:p-0">
       <main className="mx-auto max-w-7xl space-y-6">
+        {/* Só admin: troca de cliente sem voltar ao /admin. Clientes nunca veem esta faixa. */}
+        {sessao.admin && (
+          <div className="entrar flex flex-wrap items-center gap-x-4 gap-y-2 rounded-2xl border border-blue-100 bg-blue-50 px-4 py-3 print:hidden">
+            <p className="flex items-center gap-2 text-sm font-semibold text-blue-700">
+              <ShieldCheck className="size-4" aria-hidden /> Modo administrador
+            </p>
+            <div className="ml-auto flex flex-wrap items-center gap-2">
+              <span id="seletor-cliente-dash" className="text-xs font-semibold text-blue-700">Cliente</span>
+              <SeletorCliente atual={ver} rotuloId="seletor-cliente-dash" />
+              <Button asChild variant="outline">
+                <a href={linkAdmin()}><ArrowLeft aria-hidden /> Voltar ao admin</a>
+              </Button>
+            </div>
+          </div>
+        )}
         <header className={`entrar ${CARTAO} flex flex-wrap items-center gap-4 p-5`}>
           <span className="flex size-11 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-blue-600 to-blue-500 text-white print:hidden">
             <BarChart3 className="size-5" aria-hidden />
@@ -100,10 +119,9 @@ function DashboardPage({ sessao }: { sessao: SessaoAberta }) {
                 {tempoRelativo(ultimoSync)}
               </time>
             </p>
-            {(ver || status?.coletandoHistorico) && (
+            {status?.coletandoHistorico && (
               <div className="flex flex-wrap gap-1.5 print:hidden">
-                {ver && <Badge className={TOM.aviso}>Visualizando como admin</Badge>}
-                {status?.coletandoHistorico && <Badge className={TOM.neutro}>Coletando histórico</Badge>}
+                <Badge className={TOM.neutro}>Coletando histórico</Badge>
               </div>
             )}
             {/* Cabeçalho do relatório (só no PDF). */}
@@ -120,6 +138,7 @@ function DashboardPage({ sessao }: { sessao: SessaoAberta }) {
 
         <FaixaDesatualizado desde={status?.desatualizadoDesde ?? null} />
 
+        {!opcoes && !erro && <EsqueletoFiltros />}
         {opcoes && aplicado && (
           <div className="entrar" style={atraso(1)}>
             <Filtros key={JSON.stringify(aplicado)} opcoes={opcoes} valor={aplicado} onAplicar={setAplicado} />
@@ -137,13 +156,7 @@ function DashboardPage({ sessao }: { sessao: SessaoAberta }) {
           </p>
         )}
 
-        {!resumo && !erro && (
-          <div className="space-y-6">
-            <Skeleton className="h-28 w-full" />
-            <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">{[0, 1, 2, 3, 4].map((i) => <Skeleton key={i} className="h-44" />)}</div>
-            <Skeleton className="h-80 w-full" />
-          </div>
-        )}
+        {!resumo && !erro && <EsqueletoConteudoDashboard />}
         {resumo && vazio && (
           <section className="rounded-2xl border border-dashed border-slate-200 bg-card">
             {status?.coletandoHistorico ? (
@@ -177,5 +190,5 @@ function DashboardPage({ sessao }: { sessao: SessaoAberta }) {
 }
 
 export default function DashboardApp() {
-  return <Acesso>{(s) => <DashboardPage sessao={s} />}</Acesso>;
+  return <Acesso esqueleto={<EsqueletoDashboard texto="Validando acesso…" />}>{(s) => <DashboardPage sessao={s} />}</Acesso>;
 }

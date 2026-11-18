@@ -1,22 +1,90 @@
 import { useCallback, useEffect, useState, type ReactNode } from 'react';
-import { Building2, LockKeyhole, Loader2, RefreshCw } from 'lucide-react';
+import { Building2, Clock, LockKeyhole, Loader2, MonitorSmartphone, Phone, PlugZap, RefreshCw, ShieldX, TriangleAlert, type LucideIcon } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Vazio } from './Vazio';
+import { TOM } from './tons';
 import { PILULA } from './visual';
 import { Campo, erroDoCampo } from '@/features/admin/Formulario';
 import { abrirSessao, cadastrarPrimeiroAcesso, codigoDeErro, mensagemDeErro, podeCadastrar, type SessaoAberta } from '@/lib/api';
 
-const MENSAGENS: Record<string, string> = {
-  SEM_USUARIO: 'Abra este painel pelo Chatfast.',
-  SEM_CADASTRO: 'Conta não cadastrada. Fale com a Fasterisk.',
-  AGENTE_DESCONHECIDO: 'Acesso não autorizado.',
-  HELENA_INDISPONIVEL: 'Não foi possível validar seu acesso agora. Tente novamente.',
-  HELENA_RECUSOU_TOKEN: 'Integração com o Chatfast precisa ser atualizada. Fale com a Fasterisk.',
-  CLIENTE_INATIVO: 'Conta desativada. Fale com a Fasterisk.',
+/** Contato do suporte mostrado nas telas de bloqueio. */
+const SUPORTE = { exibicao: '(61) 4042-6792', tel: '+556140426792' };
+
+interface Bloqueio { titulo: string; texto: string; icone: LucideIcon; tom: string; suporte?: boolean; tentarDeNovo?: boolean }
+
+const BLOQUEIOS: Record<string, Bloqueio> = {
+  SEM_CADASTRO: {
+    titulo: 'Função não liberada', icone: LockKeyhole, tom: TOM.marca, suporte: true,
+    texto: 'O Consumo Meta ainda não está liberado para a sua conta. Para liberar, acione o suporte da Fasterisk.',
+  },
+  CLIENTE_INATIVO: {
+    titulo: 'Conta desativada', icone: ShieldX, tom: TOM.neutro, suporte: true,
+    texto: 'O acesso ao Consumo Meta está desativado para a sua conta. Os dados estão guardados. Para reativar, acione o suporte da Fasterisk.',
+  },
+  HELENA_RECUSOU_TOKEN: {
+    titulo: 'Integração precisa ser atualizada', icone: PlugZap, tom: TOM.aviso, suporte: true,
+    texto: 'A integração da sua conta com o Chatfast precisa ser atualizada. Acione o suporte da Fasterisk.',
+  },
+  AGENTE_DESCONHECIDO: {
+    titulo: 'Acesso não autorizado', icone: ShieldX, tom: TOM.erro, suporte: true,
+    texto: 'Seu usuário não tem acesso a este painel. Se precisar de acesso, acione o suporte da Fasterisk.',
+  },
+  SEM_USUARIO: {
+    titulo: 'Abra pelo Chatfast', icone: MonitorSmartphone, tom: TOM.marca,
+    texto: 'Este painel funciona dentro do Chatfast. Abra-o pelo menu do Chatfast para entrar.',
+  },
+  HELENA_INDISPONIVEL: {
+    titulo: 'Não foi possível validar seu acesso', icone: Clock, tom: TOM.aviso, tentarDeNovo: true,
+    texto: 'O Chatfast não respondeu agora. Tente de novo em alguns instantes.',
+  },
 };
 
+/** Tela de acesso negado: diz o que houve, o que fazer e como falar com o suporte. */
+export function TelaBloqueio({ titulo, texto, icone: Icone, tom, suporte, codigo, onTentarDeNovo }: Omit<Bloqueio, 'tentarDeNovo'> & {
+  codigo?: string; onTentarDeNovo?: () => void;
+}) {
+  return (
+    <div className="flex min-h-[80vh] items-center justify-center p-4 sm:p-6">
+      <section role="alert" className="entrar w-full max-w-md overflow-hidden rounded-2xl border border-slate-200 bg-card shadow-sm">
+        <div className="flex flex-col items-center gap-3 px-6 pt-8 pb-6 text-center sm:px-8">
+          <span className={`flex size-14 items-center justify-center rounded-full ${tom}`}>
+            <Icone className="size-6" aria-hidden />
+          </span>
+          <h1 className="text-lg font-bold text-slate-800">{titulo}</h1>
+          <p className="text-sm leading-relaxed text-slate-500">{texto}</p>
+          {onTentarDeNovo && (
+            <Button className={`${PILULA} mt-2`} onClick={onTentarDeNovo}><RefreshCw aria-hidden /> Tentar de novo</Button>
+          )}
+        </div>
+
+        {suporte && (
+          <div className="border-t border-slate-100 bg-slate-50 px-6 py-5 sm:px-8">
+            <p className="text-[11px] font-semibold tracking-wide text-slate-400 uppercase">Suporte Fasterisk</p>
+            <div className="mt-2 flex flex-wrap items-center justify-between gap-3">
+              <p className="flex items-center gap-2 text-xl font-bold text-slate-800 tabular-nums select-all">
+                <Phone className="size-5 text-blue-600" aria-hidden /> {SUPORTE.exibicao}
+              </p>
+              <Button asChild className={PILULA}>
+                <a href={`tel:${SUPORTE.tel}`}><Phone aria-hidden /> Ligar</a>
+              </Button>
+            </div>
+            {codigo && (
+              <p className="mt-3 text-xs text-slate-400">
+                Ao falar com o suporte, informe o código <span className="rounded bg-slate-100 px-1.5 py-0.5 font-mono text-slate-500">{codigo}</span>
+              </p>
+            )}
+          </div>
+        )}
+      </section>
+    </div>
+  );
+}
+
 /** Abre a sessão (validada na Helena) antes de mostrar qualquer dado. */
-export function Acesso({ children }: { children: (s: SessaoAberta) => ReactNode }) {
+export function Acesso({ children, esqueleto }: {
+  children: (s: SessaoAberta) => ReactNode;
+  /** Estrutura da página mostrada enquanto a sessão é validada (carregamento progressivo). */
+  esqueleto?: ReactNode;
+}) {
   const [sessao, setSessao] = useState<SessaoAberta | null>(null);
   const [erro, setErro] = useState<{ codigo?: string; texto: string; podeCadastrar?: boolean } | null>(null);
 
@@ -24,29 +92,20 @@ export function Acesso({ children }: { children: (s: SessaoAberta) => ReactNode 
     setErro(null);
     abrirSessao()
       .then(setSessao)
-      .catch((e) => {
-        const codigo = codigoDeErro(e);
-        setErro({ codigo, texto: (codigo && MENSAGENS[codigo]) || mensagemDeErro(e), podeCadastrar: podeCadastrar(e) });
-      });
+      .catch((e) => setErro({ codigo: codigoDeErro(e), texto: mensagemDeErro(e), podeCadastrar: podeCadastrar(e) }));
   }, []);
 
   useEffect(abrir, [abrir]);
 
   if (erro?.podeCadastrar) return <PrimeiroAcesso onPronto={setSessao} />;
   if (erro) {
-    return (
-      <div className="flex min-h-[70vh] items-center justify-center p-4 sm:p-6">
-        <div className="entrar w-full max-w-md rounded-2xl border border-slate-200 bg-card shadow-sm">
-          <Vazio icone={LockKeyhole} texto={erro.texto}>
-            {erro.codigo === 'HELENA_INDISPONIVEL' && (
-              <Button className={PILULA} onClick={abrir}><RefreshCw aria-hidden /> Tentar de novo</Button>
-            )}
-          </Vazio>
-        </div>
-      </div>
-    );
+    // Erro sem tela própria (ex.: servidor fora do ar): mostra a mensagem da API, com suporte e nova tentativa.
+    const b = (erro.codigo && BLOQUEIOS[erro.codigo]) || {
+      titulo: 'Algo deu errado', texto: erro.texto, icone: TriangleAlert, tom: TOM.erro, suporte: true, tentarDeNovo: true,
+    };
+    return <TelaBloqueio {...b} codigo={erro.codigo} onTentarDeNovo={b.tentarDeNovo ? abrir : undefined} />;
   }
-  if (!sessao) return <Carregando texto="Validando acesso…" />;
+  if (!sessao) return esqueleto ?? <Carregando texto="Validando acesso…" />;
   return <>{children(sessao)}</>;
 }
 

@@ -9,9 +9,20 @@ const novoCliente = z.object({
   nome: z.string().trim().min(1).max(120),
   companyid: z.string().uuid('companyid deve ser um UUID'),
   tokenChatfast: token,
+  taxi: z.boolean().optional(),
 });
+/** Valor em R$: aceita número ou texto com vírgula ("1.500" não: sem separador de milhar). null = sem alerta. */
+const limiteBrl = z
+  .union([z.number(), z.string().trim()])
+  .transform((v) => String(v).replace(',', '.'))
+  .pipe(z.string().regex(/^\d{1,10}(\.\d{1,2})?$/, 'valor em R$ com até 2 casas decimais').refine((v) => Number(v) > 0, 'valor maior que zero'))
+  .nullable()
+  .optional();
 const editarCliente = z.object({
   nome: z.string().trim().min(1).max(120).optional(),
+  taxi: z.boolean().optional(),
+  limiteDiarioBrl: limiteBrl,
+  limiteMensalBrl: limiteBrl,
   tokenChatfast: token.optional(),
   status: z.enum(['ATIVO', 'INATIVO']).optional(),
 });
@@ -30,6 +41,12 @@ const novaCotacao = z.object({
   vigenteDesde: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'data no formato AAAA-MM-DD'),
 });
 
+const porMes = z.object({
+  mes: z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/, 'mes no formato AAAA-MM').optional(),
+  /** true = só clientes Taxi; false = só os demais; ausente = todos. */
+  taxi: z.enum(['true', 'false']).transform((v) => v === 'true').optional(),
+});
+
 const p = <K extends string>(params: unknown, chave: K) => id.parse((params as Record<K, unknown>)[chave]);
 
 export const rotasAdmin =
@@ -38,6 +55,18 @@ export const rotasAdmin =
     app.get('/painel', async () => d.clientes.painel());
 
     app.get('/clientes', async () => d.clientes.listar());
+    app.get('/consumo', async (req) => {
+      const q = porMes.parse(req.query);
+      return d.exportacao.consumoDosClientes(q.mes, q.taxi);
+    });
+    app.get('/relatorio.xlsx', async (req, reply) => {
+      const q = porMes.parse(req.query);
+      const { arquivo, nome } = await d.exportacao.relatorioClientesXlsx(q.mes, q.taxi);
+      return reply
+        .type('application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+        .header('Content-Disposition', `attachment; filename="${nome}"`)
+        .send(arquivo);
+    });
     app.post('/clientes', async (req, reply) => {
       reply.code(201);
       return d.clientes.criar(novoCliente.parse(req.body), req.sessao.uid);

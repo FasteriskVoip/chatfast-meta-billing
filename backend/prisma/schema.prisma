@@ -83,6 +83,13 @@ model Cliente {
   status               StatusCliente @default(ATIVO)
   inativoDesde         DateTime?     @map("inativo_desde") @db.Date
   alertaChatfast       Boolean       @default(false) @map("alerta_chatfast")
+  /// Segmento "Cliente Taxi": filtro no admin/relatório; só esses clientes recebem alertas de consumo.
+  taxi                 Boolean       @default(false)
+  /// Alertas de consumo (R$): vazio = sem alerta. *Em = último dia/mês em que o webhook foi acionado.
+  limiteDiarioBrl      Decimal?      @map("limite_diario_brl") @db.Decimal(12, 2)
+  limiteMensalBrl      Decimal?      @map("limite_mensal_brl") @db.Decimal(12, 2)
+  alertaDiarioEm       DateTime?     @map("alerta_diario_em") @db.Date
+  alertaMensalEm       DateTime?     @map("alerta_mensal_em") @db.Date
   criadoEm             DateTime      @default(now()) @map("criado_em") @db.Timestamptz(6)
   atualizadoEm         DateTime      @updatedAt @map("atualizado_em") @db.Timestamptz(6)
   contas               ContaWaba[]
