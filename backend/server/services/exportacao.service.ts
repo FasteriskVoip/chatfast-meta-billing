@@ -48,7 +48,7 @@ export function criarExportacaoService(d: {
       const { resumo, contas } = await d.dashboard.dadosResumo(c.companyid, { de: periodo.de, ate: periodo.ate });
       return {
         clienteId: c.id, nome: c.nome, companyid: c.companyid, status: c.status, taxi: c.taxi, contas: contas.length,
-        mensagens: resumo.total.volume, cobradas: resumo.total.cobradas, gratuitas: resumo.total.volume - resumo.total.cobradas,
+        enviadas: resumo.envio.enviadas, mensagens: resumo.total.volume, cobradas: resumo.total.cobradas, gratuitas: resumo.total.volume - resumo.total.cobradas,
         custoBrl: resumo.total.custoBrl, custoSituacao: resumo.total.custoSituacao,
       };
     }));
@@ -76,20 +76,20 @@ export function criarExportacaoService(d: {
         ['Clientes', taxi === undefined ? 'Todos' : taxi ? 'Só clientes Taxi' : 'Só clientes que não são Taxi'],
         ['Observação', 'Custo em R$ estimado pela cotação vigente em cada dia; a cobrança oficial é a fatura da Meta'],
         [],
-        ['Cliente', 'companyid', 'Status', 'Taxi', 'Contas WABA', 'Mensagens', 'Cobradas', 'Gratuitas', 'Custo R$', 'Situação do custo'],
+        ['Cliente', 'companyid', 'Status', 'Taxi', 'Contas WABA', 'Enviadas', 'Mensagens', 'Cobradas', 'Gratuitas', 'Custo R$', 'Situação do custo'],
       ]);
       for (const c of clientes) {
-        s.addRow([c.nome, c.companyid, c.status === 'ATIVO' ? 'Ativo' : 'Inativo', c.taxi ? 'Sim' : 'Não', c.contas, c.mensagens, c.cobradas, c.gratuitas,
+        s.addRow([c.nome, c.companyid, c.status === 'ATIVO' ? 'Ativo' : 'Inativo', c.taxi ? 'Sim' : 'Não', c.contas, c.enviadas, c.mensagens, c.cobradas, c.gratuitas,
           valorOuTexto(c.custoBrl, c.custoSituacao), SITUACAO[c.custoSituacao]]);
       }
-      const soma = (k: 'mensagens' | 'cobradas' | 'gratuitas') => clientes.reduce((t, c) => t + c[k], 0);
-      s.addRow(['Total', '', '', '', clientes.reduce((t, c) => t + c.contas, 0), soma('mensagens'), soma('cobradas'), soma('gratuitas'),
+      const soma = (k: 'enviadas' | 'mensagens' | 'cobradas' | 'gratuitas') => clientes.reduce((t, c) => t + c[k], 0);
+      s.addRow(['Total', '', '', '', clientes.reduce((t, c) => t + c.contas, 0), soma('enviadas'), soma('mensagens'), soma('cobradas'), soma('gratuitas'),
         total.custoBrl === null ? 'indisponível' : Number(total.custoBrl),
         total.custoBrl === null ? 'nenhum cliente com custo' : total.incompleto ? 'parcial (há clientes sem custo completo)' : 'completo']);
       s.getRow(6).font = { bold: true };
       s.lastRow!.font = { bold: true };
-      s.getColumn(9).numFmt = '"R$" #,##0.00';
-      s.columns.forEach((col, i) => (col.width = [28, 38, 10, 8, 12, 12, 12, 12, 14, 40][i]));
+      s.getColumn(10).numFmt = '"R$" #,##0.00';
+      s.columns.forEach((col, i) => (col.width = [28, 38, 10, 8, 12, 12, 12, 12, 12, 14, 40][i]));
       const sufixo = taxi === undefined ? '' : taxi ? '-taxi' : '-nao-taxi';
       return { arquivo: Buffer.from(await wb.xlsx.writeBuffer()), nome: `consumo-clientes${sufixo}-${periodo.mes}.xlsx` };
     },

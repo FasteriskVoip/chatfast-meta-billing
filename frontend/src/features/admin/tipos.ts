@@ -105,6 +105,8 @@ export const linkVerDashboard = (companyid: string) => {
 export interface ConsumoMes {
   periodo: { mes: string; de: string; ate: string };
   clientes: {
+    /** Enviadas no mês (endpoint de envio da Meta, o mesmo do dashboard). */
+    enviadas: number;
     clienteId: string; mensagens: number; cobradas: number; gratuitas: number;
     custoBrl: string | null; custoSituacao: 'completo' | 'parcial' | 'indisponivel' | 'sem_cotacao';
   }[];

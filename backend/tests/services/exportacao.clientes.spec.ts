@@ -35,6 +35,12 @@ describe('consumo e relatório de todos os clientes', () => {
       // outubro não entra em novembro
       { ...base, data: '2026-10-30', categoria: 'MARKETING', volume: 99, custo: '50.000000' },
     ]);
+    // Enviadas vêm do endpoint de envio: 2 dias em novembro, 1 em outubro (não entra em novembro).
+    await consumo.upsertMensagens([
+      { companyid: CID_A, contaWabaId: conta.id, numeroId: n.id, data: '2026-11-02', enviadas: 120, entregues: 118 },
+      { companyid: CID_A, contaWabaId: conta.id, numeroId: n.id, data: '2026-11-10', enviadas: 30, entregues: 30 },
+      { companyid: CID_A, contaWabaId: conta.id, numeroId: n.id, data: '2026-10-30', enviadas: 500, entregues: 500 },
+    ]);
     const dashboard = criarDashboardService({
       repo, consumo, sync: { sincronizarConta: async () => 'OK' }, emSegundoPlano: () => {}, agora: () => AGORA,
     });
@@ -46,7 +52,7 @@ describe('consumo e relatório de todos os clientes', () => {
     const r = await svc.consumoDosClientes();
     expect(r.periodo).toEqual({ mes: '2026-11', de: '2026-11-01', ate: '2026-11-18' });
     expect(r.clientes).toEqual([
-      expect.objectContaining({ nome: 'Clínica São José', contas: 1, mensagens: 10, cobradas: 10, custoBrl: '10.000000', custoSituacao: 'completo' }),
+      expect.objectContaining({ nome: 'Clínica São José', contas: 1, enviadas: 150, mensagens: 10, cobradas: 10, custoBrl: '10.000000', custoSituacao: 'completo' }),
       expect.objectContaining({ nome: 'Loja Sem Conta', contas: 0, mensagens: 0, custoBrl: '0.000000' }),
     ]);
   });
@@ -60,9 +66,9 @@ describe('consumo e relatório de todos os clientes', () => {
     const linhas = wb.getWorksheet('Clientes')!.getSheetValues().filter(Boolean).map((l) => (l as unknown[]).slice(1));
     expect(linhas[1]).toEqual(['Período', '2026-10-01 a 2026-10-31']);
     expect(linhas).toContainEqual(['Clientes', 'Todos']);
-    expect(linhas).toContainEqual(['Clínica São José', CID_A, 'Ativo', 'Não', 1, 99, 99, 0, 250, 'completo']);
-    expect(linhas).toContainEqual(['Loja Sem Conta', CID_B, 'Ativo', 'Sim', 0, 0, 0, 0, 0, 'completo']);
-    expect(linhas.at(-1)).toEqual(['Total', '', '', '', 1, 99, 99, 0, 250, 'completo']);
+    expect(linhas).toContainEqual(['Clínica São José', CID_A, 'Ativo', 'Não', 1, 500, 99, 99, 0, 250, 'completo']);
+    expect(linhas).toContainEqual(['Loja Sem Conta', CID_B, 'Ativo', 'Sim', 0, 0, 0, 0, 0, 0, 'completo']);
+    expect(linhas.at(-1)).toEqual(['Total', '', '', '', 1, 500, 99, 99, 0, 250, 'completo']);
   });
 
   it('filtro Taxi: só os clientes Taxi, ou só os demais', async () => {

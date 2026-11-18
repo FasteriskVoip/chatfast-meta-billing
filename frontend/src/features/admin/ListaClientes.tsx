@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { formatarBRL, formatarDataHora, formatarDiaMes } from '@/components/shared/formatos';
+import { formatarBRL, formatarDataHora, formatarDiaMes, formatarNumero } from '@/components/shared/formatos';
 import { TOM } from '@/components/shared/tons';
 import { Vazio } from '@/components/shared/Vazio';
 import { api, mensagemDeErro } from '@/lib/api';
@@ -44,7 +44,7 @@ export function comparadorNulosNoFim<T>(valor: (t: T) => string | number | null,
   };
 }
 
-type Coluna = 'nome' | 'contas' | 'custo' | 'sync';
+type Coluna = 'nome' | 'contas' | 'enviadas' | 'custo' | 'sync';
 type Ordem = { coluna: Coluna; desc: boolean };
 
 /** Cabeçalho que ordena ao clicar: 1º clique na direção mais útil, 2º inverte. */
@@ -94,6 +94,7 @@ export function ListaClientes({ painel, onAbrir }: { painel: Painel | null; onAb
   const valor: Record<Coluna, (c: ClienteLinha) => string | number | null> = {
     nome: (c) => c.nome,
     contas: (c) => c.contas,
+    enviadas: (c) => custoDe.get(c.id)?.enviadas ?? null,
     custo: (c) => (custoDe.get(c.id)?.custoBrl == null ? null : Number(custoDe.get(c.id)!.custoBrl)),
     sync: (c) => (c.ultimoSync ? Date.parse(c.ultimoSync) : null),
   };
@@ -172,6 +173,7 @@ export function ListaClientes({ painel, onAbrir }: { painel: Painel | null; onAb
                   <CabecalhoOrdenavel coluna="nome" rotulo="Cliente" ordem={ordem} onOrdenar={ordenar} className="pl-5" />
                   <CabecalhoOrdenavel coluna="contas" rotulo="Contas" ordem={ordem} onOrdenar={ordenar} className="text-right" />
                   <TableHead>Status</TableHead>
+                  <CabecalhoOrdenavel coluna="enviadas" rotulo="Enviadas no mês" ordem={ordem} onOrdenar={ordenar} className="text-right" />
                   <CabecalhoOrdenavel coluna="custo" rotulo="Custo no mês" ordem={ordem} onOrdenar={ordenar} className="text-right" />
                   <CabecalhoOrdenavel coluna="sync" rotulo="Último sync" ordem={ordem} onOrdenar={ordenar} />
                   <TableHead className="pr-5"><span className="sr-only">Ações</span></TableHead>
@@ -179,7 +181,7 @@ export function ListaClientes({ painel, onAbrir }: { painel: Painel | null; onAb
               </TableHeader>
               <TableBody>
                 {visiveis.length === 0 && (
-                  <TableRow><TableCell colSpan={6} className="py-10 text-center text-sm text-slate-500">{busca ? <>Nenhum cliente encontrado para “{busca}”.</> : 'Nenhum cliente neste filtro.'}</TableCell></TableRow>
+                  <TableRow><TableCell colSpan={7} className="py-10 text-center text-sm text-slate-500">{busca ? <>Nenhum cliente encontrado para “{busca}”.</> : 'Nenhum cliente neste filtro.'}</TableCell></TableRow>
                 )}
                 {visiveis.map((c) => (
                   <TableRow
@@ -204,6 +206,11 @@ export function ListaClientes({ painel, onAbrir }: { painel: Painel | null; onAb
                       {c.piorStatus
                         ? <Badge className={ROTULO_STATUS[c.piorStatus].cls}>{ROTULO_STATUS[c.piorStatus].texto}</Badge>
                         : <span className="text-xs text-slate-400">sem contas</span>}
+                    </TableCell>
+                    <TableCell className="text-right text-slate-700 tabular-nums">
+                      {consumoFalhou ? <span className="text-slate-400">—</span>
+                        : custoDe.get(c.id) ? formatarNumero(custoDe.get(c.id)!.enviadas)
+                        : <Skeleton className="ml-auto h-4 w-14" />}
                     </TableCell>
                     <TableCell className="text-right tabular-nums"><CustoMes c={custoDe.get(c.id)} falhou={consumoFalhou} /></TableCell>
                     <TableCell className="text-xs text-slate-500 tabular-nums">{formatarDataHora(c.ultimoSync)}</TableCell>
