@@ -36,6 +36,8 @@ const esquema = z.object({
   // A Meta guarda só 1 ano de pricing_analytics (research R-06).
   SYNC_DIAS_BACKFILL: z.coerce.number().int().min(1).default(90).transform((n) => Math.min(n, 365)),
   HEARTBEAT_URL: z.string().url().optional().or(z.literal('').transform(() => undefined)),
+  // Cotação USD→BRL automática pela PTAX do Banco Central (ligada por padrão; "false" = só cadastro manual).
+  COTACAO_AUTOMATICA: bool,
   // Webhook do n8n que recebe os alertas de consumo diário/mensal. Vazio = alertas desligados.
   N8N_WEBHOOK_ALERTAS: z.string().url().optional().or(z.literal('').transform(() => undefined)),
   OTEL_SERVICE_NAME: z.string().default('consumo-meta'),

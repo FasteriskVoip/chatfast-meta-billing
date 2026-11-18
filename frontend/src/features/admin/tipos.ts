@@ -70,6 +70,8 @@ export interface Painel {
   semCotacao: boolean;
   /** N8N_WEBHOOK_ALERTAS configurado no servidor. */
   alertasAtivos: boolean;
+  /** Cotação buscada sozinha todo dia útil na PTAX do Banco Central. */
+  cotacaoAutomatica: boolean;
 }
 
 export const ROTULO_STATUS: Record<StatusConta, { texto: string; cls: string }> = {

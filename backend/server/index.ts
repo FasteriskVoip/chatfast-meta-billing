@@ -5,6 +5,7 @@ import { criarCifraAesGcm } from './adapters/cripto/aesGcm.js';
 import { criarHelenaGateway } from './adapters/helena/helenaGateway.js';
 import { criarApp } from './adapters/http/app.js';
 import { emitirSessao } from './adapters/http/sessao.js';
+import { criarPtaxGateway } from './adapters/bcb/ptaxGateway.js';
 import { criarMetaGateway } from './adapters/meta/metaGraphGateway.js';
 import { criarWebhookAlertas } from './adapters/n8n/webhookAlertas.js';
 import { prisma } from './adapters/persistence/prisma/client.js';
@@ -45,7 +46,13 @@ const sync = criarSyncService({
   cfg: { diasBackfill: env.SYNC_DIAS_BACKFILL, diasReprocesso: env.SYNC_DIAS_REPROCESSO },
 });
 const dashboard = criarDashboardService({ repo, consumo, sync, emSegundoPlano });
-const clientes = criarClientesService({ repo, helena, cifra, sync, emSegundoPlano, alertasAtivos: Boolean(env.N8N_WEBHOOK_ALERTAS) });
+const cotacaoAutomatica = env.COTACAO_AUTOMATICA !== false;
+const cotacoes = criarCotacoesService({
+  repo, log: logger, diasHistorico: env.SYNC_DIAS_BACKFILL, fonte: cotacaoAutomatica ? criarPtaxGateway() : null,
+});
+const clientes = criarClientesService({
+  repo, helena, cifra, sync, emSegundoPlano, alertasAtivos: Boolean(env.N8N_WEBHOOK_ALERTAS), cotacaoAutomatica,
+});
 const alertas = criarAlertasService({
   repo, dashboard, log: logger, serializarErro,
   notificador: env.N8N_WEBHOOK_ALERTAS ? criarWebhookAlertas(env.N8N_WEBHOOK_ALERTAS) : null,
@@ -72,7 +79,7 @@ const app = await criarApp({
   exportacao: criarExportacaoService({ dashboard, repo }),
   clientes,
   contas: criarContasService({ repo, meta, cifra, sync, emSegundoPlano }),
-  cotacoes: criarCotacoesService({ repo }),
+  cotacoes,
   saude: async () => {
     await prisma.$queryRaw`SELECT 1`;
   },
@@ -87,6 +94,8 @@ cron.schedule(
     if (tickRodando) return logger.warn('tick anterior ainda em execução; pulando');
     tickRodando = true;
     try {
+      // Cotação do dia antes da coleta: custos e alertas já saem convertidos com ela.
+      await cotacoes.sincronizarOficial().catch((err: unknown) => logger.warn({ err: serializarErro(err) }, 'cotação PTAX não atualizada'));
       await sync.executarTick();
       // Com os dados recém-coletados, confere os limites de consumo de cada cliente.
       await alertas.verificar().catch((err: unknown) => logger.error({ err: serializarErro(err) }, 'verificação de alertas falhou'));
@@ -97,6 +106,9 @@ cron.schedule(
   { timezone: 'America/Fortaleza' },
 );
 cron.schedule('0 6 * * *', () => void sync.verificarExpiracoes(), { timezone: 'America/Fortaleza' });
+
+// Ao subir: traz a cotação (e o histórico, na primeira vez) sem esperar o próximo ciclo.
+emSegundoPlano(() => cotacoes.sincronizarOficial());
 
 await app.listen({ port: env.PORT, host: '0.0.0.0' });
 logger.info({ porta: env.PORT }, 'consumo-meta no ar');

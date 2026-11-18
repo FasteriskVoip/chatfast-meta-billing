@@ -1,11 +1,13 @@
 import { useEffect, useState } from 'react';
-import { AlertTriangle, DollarSign, History, Plus } from 'lucide-react';
+import { AlertTriangle, DollarSign, History, Landmark, Plus } from 'lucide-react';
 import { toast } from 'sonner';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { formatarData } from '@/components/shared/formatos';
+import { TOM } from '@/components/shared/tons';
 import { Vazio } from '@/components/shared/Vazio';
 import { api, mensagemDeErro } from '@/lib/api';
 import { PILULA, TituloCartao } from '@/components/shared/visual';
@@ -13,6 +15,9 @@ import { Campo } from './Formulario';
 import type { Painel } from './tipos';
 
 interface Cotacao { id: string; valor: string; vigenteDesde: string; criadoPor: string }
+
+/** criadoPor das cotações do Banco Central (igual a AUTOR_PTAX no backend). */
+const AUTOR_PTAX = 'banco-central-ptax';
 
 const reais = (valor: string) => `R$ ${Number(valor).toLocaleString('pt-BR', { minimumFractionDigits: 4, maximumFractionDigits: 4 })}`;
 
@@ -47,13 +52,23 @@ export function Cotacoes({ painel, onAlterada }: { painel: Painel; onAlterada: (
         <Alert variant="destructive" className="entrar">
           <AlertTriangle aria-hidden />
           <AlertTitle>Nenhuma cotação cadastrada</AlertTitle>
-          <AlertDescription>Sem ela, o custo em reais fica indisponível no dashboard dos clientes.</AlertDescription>
+          <AlertDescription>
+            {painel.cotacaoAutomatica
+              ? 'A busca automática no Banco Central ainda não trouxe nenhum valor (ela roda ao subir o servidor e a cada hora). Se precisar agora, cadastre à mão abaixo.'
+              : 'Sem ela, o custo em reais fica indisponível no dashboard dos clientes.'}
+          </AlertDescription>
         </Alert>
       )}
 
       <div className="grid items-start gap-6 lg:grid-cols-[22rem_1fr]">
         <section className="entrar space-y-5 rounded-2xl border border-slate-200 bg-card p-6 shadow-sm" style={{ animationDelay: '60ms' }}>
           <TituloCartao icone={DollarSign} titulo="Cotação vigente" descricao="Quanto vale US$ 1 em reais para calcular o custo." />
+          {painel.cotacaoAutomatica && (
+            <p className={`flex items-start gap-2 rounded-lg px-3 py-2 text-xs ${TOM.marca}`}>
+              <Landmark className="mt-0.5 size-4 shrink-0" aria-hidden />
+              Atualizada sozinha todo dia útil com a PTAX de venda do Banco Central. Fim de semana e feriado usam a do último dia útil.
+            </p>
+          )}
           {painel.cotacaoVigente ? (
             <div className="rounded-xl border border-blue-100 bg-blue-50 p-4">
               <p className="text-[11px] font-semibold tracking-wide text-blue-700 uppercase">US$ 1 =</p>
@@ -67,7 +82,10 @@ export function Cotacoes({ painel, onAlterada }: { painel: Painel; onAlterada: (
           )}
 
           <form onSubmit={salvar} className="space-y-3 border-t border-slate-100 pt-5">
-            <p className="text-sm font-semibold text-slate-800">Nova cotação</p>
+            <p className="text-sm font-semibold text-slate-800">{painel.cotacaoAutomatica ? 'Cadastrar à mão (opcional)' : 'Nova cotação'}</p>
+            {painel.cotacaoAutomatica && (
+              <p className="text-xs text-slate-400">Uma data cadastrada à mão vale no lugar da do Banco Central e não é sobrescrita.</p>
+            )}
             <Campo id="cotacao-valor" rotulo="Valor em reais" required inputMode="decimal" placeholder="5,4300" value={f.valor}
               ajuda="Quantos reais vale 1 dólar. Use vírgula ou ponto, com até 4 casas."
               onChange={(e) => setF({ ...f, valor: e.target.value })} />
@@ -88,12 +106,17 @@ export function Cotacoes({ painel, onAlterada }: { painel: Painel; onAlterada: (
             <div className="border-t border-slate-100">
               <Table>
                 <TableHeader>
-                  <TableRow><TableHead className="pl-6">Vale a partir de</TableHead><TableHead className="pr-6 text-right">Valor</TableHead></TableRow>
+                  <TableRow><TableHead className="pl-6">Vale a partir de</TableHead><TableHead>Origem</TableHead><TableHead className="pr-6 text-right">Valor</TableHead></TableRow>
                 </TableHeader>
                 <TableBody>
                   {lista.map((c) => (
                     <TableRow key={c.id}>
                       <TableCell className="pl-6 text-slate-700 tabular-nums">{formatarData(c.vigenteDesde)}</TableCell>
+                      <TableCell>
+                        {c.criadoPor === AUTOR_PTAX
+                          ? <Badge className={TOM.marca}>Banco Central</Badge>
+                          : <Badge className={TOM.neutro}>Manual</Badge>}
+                      </TableCell>
                       <TableCell className="pr-6 text-right font-semibold text-slate-800 tabular-nums">{reais(c.valor)}</TableCell>
                     </TableRow>
                   ))}

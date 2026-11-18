@@ -59,6 +59,6 @@ describe('clientes.service', () => {
     const c = repo.addCliente();
     repo.addConta(c, { status: 'ERRO_SYNC' });
     repo.addConta(c, { status: 'PAUSADA' });
-    expect(await svc.painel()).toEqual({ contasComProblema: 1, cotacaoVigente: null, semCotacao: true, alertasAtivos: false });
+    expect(await svc.painel()).toEqual({ contasComProblema: 1, cotacaoVigente: null, semCotacao: true, alertasAtivos: false, cotacaoAutomatica: false });
   });
 });

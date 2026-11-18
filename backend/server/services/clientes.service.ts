@@ -23,6 +23,8 @@ interface Deps {
   emSegundoPlano: (p: () => Promise<unknown>) => void;
   /** N8N_WEBHOOK_ALERTAS configurado: sem ele, os limites ficam salvos mas nenhum alerta sai. */
   alertasAtivos?: boolean;
+  /** Cotação buscada sozinha no Banco Central (PTAX). */
+  cotacaoAutomatica?: boolean;
   agora?: () => Date;
 }
 
@@ -85,6 +87,7 @@ export function criarClientesService(d: Deps) {
         cotacaoVigente: vigente && { valor: vigente.valor, vigenteDesde: vigente.vigenteDesde },
         semCotacao: cotacoes.length === 0,
         alertasAtivos: d.alertasAtivos ?? false,
+        cotacaoAutomatica: d.cotacaoAutomatica ?? false,
       };
     },
 
