@@ -16,6 +16,12 @@ describe('ehAdmin', () => {
   it('profile de admin (case-insensitive) é admin', () => {
     expect(ehAdmin(CID_FASTERISK, { ...base, profile: 'admin' }, admins)).toBe(true);
   });
+  it.each(['ADMIN', 'SUPER_ADMIN', 'super_admin', 'SuperAdmin'])('profile %s na Fasterisk é admin', (profile) => {
+    expect(ehAdmin(CID_FASTERISK, { ...base, profile }, admins)).toBe(true);
+  });
+  it('SUPER_ADMIN em empresa cliente não vira admin', () => {
+    expect(ehAdmin(CID_A, { ...base, profile: 'SUPER_ADMIN' }, admins)).toBe(false);
+  });
   it('agente comum da Fasterisk não é admin', () => {
     expect(ehAdmin(CID_FASTERISK, base, admins)).toBe(false);
   });

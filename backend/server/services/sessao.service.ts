@@ -5,9 +5,9 @@ import type { ContaRepository } from '../domain/ports/repositorios.js';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-// Perfis da Helena (enum de POST/PUT /core/v1/agent): "Admin", "Agent", "RestrictedAgent". A resposta não
-// fixa o enum, então a comparação ignora caixa e aceita variações; isOwner cobre o dono da conta.
-export const PERFIS_ADMIN = new Set(['ADMIN', 'ADMINISTRATOR', 'ADMINISTRADOR']);
+// Perfis da Helena (enum de POST/PUT /core/v1/agent): "Admin", "Agent", "RestrictedAgent", e SUPER_ADMIN para o
+// super admin. A resposta não fixa o enum, então a comparação ignora caixa e aceita variações; isOwner cobre o dono.
+export const PERFIS_ADMIN = new Set(['ADMIN', 'SUPER_ADMIN', 'SUPERADMIN', 'ADMINISTRATOR', 'ADMINISTRADOR']);
 
 export function ehAdmin(companyid: string, agente: Agente, adminCompanyids: string[]): boolean {
   if (!adminCompanyids.includes(companyid.toLowerCase())) return false;
