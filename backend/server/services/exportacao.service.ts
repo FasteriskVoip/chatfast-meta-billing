@@ -218,7 +218,7 @@ function abaClientes(wb: ExcelJS.Workbook, { periodo, clientes, total }: DadosCl
   notas(s, rt.number, n, [
     'Custo estimado em R$: a Meta informa o custo na moeda de cada WABA; as contas em dólar são convertidas pela cotação de cada dia (PTAX do Banco Central ou cadastro manual). A cobrança oficial é a fatura da Meta.',
     '"Parcial": parte do período sem custo informado pela Meta, então o valor real é maior ou igual. "Indisponível": a Meta não informa custo (ex.: linha de crédito de parceiro) ou falta a cotação. Custo ausente nunca é tratado como zero.',
-    'Custo Fasterisk: só clientes Taxi. Preço do grupo de custo × mensagens cobradas; é o valor que o cliente vê no dashboard.',
+    'Custo Fasterisk: só clientes Taxi. Preço do grupo de custo × todas as mensagens (para o Taxi não há grátis); é o valor que o cliente vê no dashboard.',
     'Enviadas e entregues contam todas as mensagens. Mensagens cobradas e grátis seguem a classificação de cobrança da Meta (pricing_analytics), que conta só as entregues.',
   ]);
   paraImpressao(s, inicio);
@@ -448,13 +448,16 @@ export function criarExportacaoService(d: {
       const wb = new ExcelJS.Workbook();
       wb.creator = 'Consumo Meta';
 
+      // Cliente Taxi no preço Fasterisk: toda mensagem é cobrada, então as colunas de grátis (e o tipo de preço) saem.
+      const taxi = tipoCusto === 'fasterisk';
+      const sem = (l: unknown[], ...cols: number[]) => (taxi ? l.filter((_, i) => !cols.includes(i)) : l);
       const r = wb.addWorksheet('Resumo');
       r.addRows([
         ['Consumo WhatsApp Cloud API', empresa],
         ['Período', `${f.de} a ${f.ate}`],
         ['Dados até', ultimoSync ? ultimoSync.toISOString() : '—'],
         ['Observação', fasterisk && tipoCusto === 'fasterisk'
-          ? `Custo em R$: R$ ${fasterisk.precoBrl.replace('.', ',')} por mensagem cobrada`
+          ? `Custo em R$: R$ ${fasterisk.precoBrl.replace('.', ',')} por mensagem (todas cobradas)`
           : 'Custo em R$ estimado pela cotação vigente em cada dia'],
         [],
         ['Enviadas', resumo.envio.enviadas],
@@ -463,13 +466,13 @@ export function criarExportacaoService(d: {
         ['Média diária (enviadas)', resumo.envio.mediaDiaria],
         ['Pico diário', resumo.envio.pico ? `${resumo.envio.pico.enviadas} em ${resumo.envio.pico.data}` : '—'],
         [],
-        ['Categoria', 'Volume', '% do volume', 'Cobradas', 'Gratuitas', 'Custo R$', 'Situação do custo'],
-        ...resumo.categorias.map((c) => [
+        sem(['Categoria', 'Volume', '% do volume', 'Cobradas', 'Gratuitas', 'Custo R$', 'Situação do custo'], 4),
+        ...resumo.categorias.map((c) => sem([
           NOME_GRUPO[c.categoria], c.volume, pct(c.percentual), c.cobradas, c.gratuitas,
           valorOuTexto(c.custoBrl, c.custoSituacao), SITUACAO[c.custoSituacao],
-        ]),
-        ['Total', resumo.total.volume, 100, resumo.total.cobradas, resumo.total.volume - resumo.total.cobradas,
-          valorOuTexto(resumo.total.custoBrl, resumo.total.custoSituacao), SITUACAO[resumo.total.custoSituacao]],
+        ], 4)),
+        sem(['Total', resumo.total.volume, 100, resumo.total.cobradas, resumo.total.volume - resumo.total.cobradas,
+          valorOuTexto(resumo.total.custoBrl, resumo.total.custoSituacao), SITUACAO[resumo.total.custoSituacao]], 4),
       ]);
       if (resumo.total.volume === 0) r.addRow(['Nenhum consumo no período']);
 
@@ -483,8 +486,8 @@ export function criarExportacaoService(d: {
       }
 
       const dia = wb.addWorksheet('Diário');
-      dia.addRow(['data', 'conta', 'número', 'categoria', 'categoria_meta', 'tipo_preco', 'volume', 'cobradas', 'gratuitas',
-        'custo_moeda_conta', 'moeda', 'cotacao', 'custo_brl', 'situacao']);
+      dia.addRow(sem(['data', 'conta', 'número', 'categoria', 'categoria_meta', 'tipo_preco', 'volume', 'cobradas', 'gratuitas',
+        'custo_moeda_conta', 'moeda', 'cotacao', 'custo_brl', 'situacao'], 5, 8));
       const nomeConta = new Map(contas.map((c) => [c.id, c.nome]));
       const numero = new Map(infos.map((i) => [i.id, i.display]));
       const linhas = f.categoria ? consumo.filter((l) => grupoDaCategoria(l.categoria) === f.categoria) : consumo;
@@ -500,13 +503,13 @@ export function criarExportacaoService(d: {
           ? conv.motivo === 'sem_cotacao' ? 'indisponível (cotação não cadastrada)' : 'indisponível'
           : estimado !== null ? 'estimado (tabela de preços)'
           : l.semCusto > 0 ? 'parcial' : conv.posterior ? 'convertido com cotação posterior' : 'completo';
-        dia.addRow([
+        dia.addRow(sem([
           l.data, nomeConta.get(l.contaId) ?? '', numero.get(l.numeroId) ?? '', g ? NOME_GRUPO[g] : 'Outra', l.categoria,
           l.tipoPreco, l.volume, ehCobrada(l.tipoPreco) ? l.volume : 0, ehCobrada(l.tipoPreco) ? 0 : l.volume,
           custo === null ? 'indisponível' : Number(custo), moeda,
           cot ? Number(deMicro(cot.valorMicro)) : moeda === 'BRL' ? 1 : '—',
           conv.brlMicro === null ? 'indisponível' : Number(deMicro(conv.brlMicro)), situacao,
-        ]);
+        ], 5, 8));
       }
       if (linhas.length === 0) dia.addRow(['Nenhum consumo no período']);
 

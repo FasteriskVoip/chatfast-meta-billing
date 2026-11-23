@@ -1,3 +1,4 @@
+import ExcelJS from 'exceljs';
 import { randomUUID } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
 import { CID_A, CID_B, CID_FASTERISK, ConsumoMemoria, RepoMemoria } from '../fakes.js';
@@ -25,7 +26,7 @@ describe('grupo de custo Fasterisk', () => {
     const { app } = await montarApp(cenario());
     for (const url of [`/api/dashboard/resumo?${q}`, `/api/dashboard/resumo?${q}&custo=meta`]) {
       const r = (await app.inject({ url, headers: auth(CID_A) })).json();
-      expect(r.total).toMatchObject({ custoBrl: '6.000000', custoMedioPorCobradaBrl: '0.060000' });
+      expect(r.total).toMatchObject({ custoBrl: '8.400000', cobradas: 140, custoMedioPorCobradaBrl: '0.060000' });
       expect(r).toMatchObject({ fasterisk: { precoBrl: '0.0600' }, custo: 'fasterisk' });
       expect(JSON.stringify(r)).not.toContain('Standard');
       expect(JSON.stringify(r)).not.toContain('3.500000');
@@ -36,9 +37,19 @@ describe('grupo de custo Fasterisk', () => {
     const { app } = await montarApp(cenario());
     const adm = auth(CID_FASTERISK, true);
     const fast = (await app.inject({ url: `/api/dashboard/resumo?${q}&companyid=${CID_A}`, headers: adm })).json();
-    expect(fast).toMatchObject({ custo: 'fasterisk', total: { custoBrl: '6.000000' } });
+    expect(fast).toMatchObject({ custo: 'fasterisk', total: { custoBrl: '8.400000' } });
     const meta = (await app.inject({ url: `/api/dashboard/resumo?${q}&companyid=${CID_A}&custo=meta`, headers: adm })).json();
     expect(meta).toMatchObject({ custo: 'meta', fasterisk: { grupo: 'Standard' }, total: { custoBrl: '3.500000' } });
+  });
+
+  it('Excel do cliente Taxi não tem coluna de grátis', async () => {
+    const { app } = await montarApp(cenario());
+    const r = await app.inject({ url: `/api/dashboard/exportar.xlsx?${q}`, headers: auth(CID_A) });
+    const wb = new ExcelJS.Workbook();
+    await wb.xlsx.load(r.rawPayload as unknown as ArrayBuffer);
+    const texto = wb.worksheets.map((w) => JSON.stringify(w.getSheetValues())).join(' ');
+    expect(texto).not.toMatch(/gratuit|grátis/i);
+    expect(texto).toContain('8.4');
   });
 
   it('cliente que não é Taxi continua com o custo da Meta', async () => {
@@ -62,16 +73,16 @@ describe('grupo de custo Fasterisk', () => {
     expect((await app.inject({ method: 'PATCH', url: `/api/admin/clientes/${id}`, headers: adm, payload: { grupoCustoId: g.id } })).json()).toMatchObject({ grupoCustoId: g.id });
     expect(repo.auditoria.map((a) => a.acao)).toEqual(['grupo_custo.criar', 'grupo_custo.editar', 'cliente.grupo_custo']);
     const r = (await app.inject({ url: `/api/dashboard/resumo?${q}`, headers: auth(CID_A) })).json();
-    expect(r.total.custoBrl).toBe('8.000000');
+    expect(r.total.custoBrl).toBe('11.200000');
   });
 
   it('lista do admin traz custo Meta e custo Fasterisk', async () => {
     const { app } = await montarApp(cenario());
     const r = (await app.inject({ url: '/api/admin/consumo?mes=2026-11', headers: auth(CID_FASTERISK, true) })).json();
     expect(r.clientes.find((c: { companyid: string }) => c.companyid === CID_A)).toMatchObject({
-      custoBrl: '3.500000', grupoCusto: 'Standard', custoFasteriskBrl: '6.000000',
+      custoBrl: '3.500000', grupoCusto: 'Standard', custoFasteriskBrl: '8.400000',
     });
-    expect(r.total).toMatchObject({ custoBrl: '3.50', custoFasteriskBrl: '6.00' });
+    expect(r.total).toMatchObject({ custoBrl: '3.50', custoFasteriskBrl: '8.40' });
   });
 
   it('preço inválido → 400', async () => {

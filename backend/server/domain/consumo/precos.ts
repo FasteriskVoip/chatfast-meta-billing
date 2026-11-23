@@ -24,8 +24,9 @@ export function custoEstimadoBrl(l: { data: DataISO; categoria: CategoriaMeta; t
 }
 
 /**
- * Cliente Taxi: o custo que ele vê é o preço do grupo Fasterisk (R$) × mensagens cobradas; grátis custa 0.
- * Troca o custo da Meta nas linhas, então toda a agregação (categorias, dias, números, Excel) segue igual.
+ * Cliente Taxi: o custo que ele vê é o preço do grupo Fasterisk (R$) × todas as mensagens; para ele não há grátis.
+ * Troca custo e tipo de preço nas linhas (tudo REGULAR), então toda a agregação (cobradas, categorias, dias,
+ * números, Excel) segue igual.
  * ponytail: preço sem vigência; editar o grupo muda também o passado. Guardar vigência como na cotação se precisar.
  */
 export function aplicarPrecoFasterisk<T extends { tipoPreco: TipoPreco; volume: number; custo: string | null; moeda: string; semCusto: number }>(
@@ -33,6 +34,6 @@ export function aplicarPrecoFasterisk<T extends { tipoPreco: TipoPreco; volume: 
 ): T[] {
   const preco = paraMicro(precoBrl);
   return linhas.map((l) => ({
-    ...l, custo: deMicro(l.tipoPreco === 'REGULAR' ? preco * BigInt(l.volume) : 0n), moeda: 'BRL', semCusto: 0,
+    ...l, tipoPreco: 'REGULAR' as const, custo: deMicro(preco * BigInt(l.volume)), moeda: 'BRL', semCusto: 0,
   }));
 }

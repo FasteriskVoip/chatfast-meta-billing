@@ -101,7 +101,7 @@ export function DetalheCliente({ clienteId, alertasAtivos, onVoltar, onAlterada 
                   {grupos.map((g) => <SelectItem key={g.id} value={g.id}>{g.nome} · {formatarPreco(g.precoBrl)} por mensagem</SelectItem>)}
                 </SelectContent>
               </Select>
-              <p className="text-xs text-slate-500">O dashboard do cliente mostra esse preço × mensagens cobradas, no lugar do custo da Meta.</p>
+              <p className="text-xs text-slate-500">O dashboard do cliente mostra esse preço × todas as mensagens (sem grátis), no lugar do custo da Meta.</p>
             </div>
           )}
         </div>

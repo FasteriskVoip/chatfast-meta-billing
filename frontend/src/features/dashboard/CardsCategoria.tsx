@@ -6,7 +6,7 @@ import { formatarNumero, formatarPercentual } from '@/components/shared/formatos
 import { TOM } from '@/components/shared/tons';
 import { CARTAO, TituloCartao, atraso, useContagem } from '@/components/shared/visual';
 import { Custo } from './Custo';
-import { COR_GRUPO, NOME_GRUPO, type Grupo, type Resumo } from './tipos';
+import { COR_GRUPO, NOME_GRUPO, semGratis, type Grupo, type Resumo } from './tipos';
 
 const ICONE: Record<Grupo, typeof Megaphone> = { MARKETING: Megaphone, UTILITY: Wrench, AUTHENTICATION: ShieldCheck, SERVICE: MessageCircle };
 
@@ -15,8 +15,11 @@ const EXPLICA: Record<Grupo, string> = {
   MARKETING: 'Promoções, ofertas, novidades e convites enviados pela empresa. É a categoria mais cara.',
   UTILITY: 'Avisos sobre algo que o cliente já pediu: confirmação de pedido, entrega, cobrança.',
   AUTHENTICATION: 'Códigos de verificação e de acesso (senha de uso único).',
-  SERVICE: 'Respostas da empresa dentro de 24h depois que o cliente mandou mensagem. São gratuitas.',
+  SERVICE: 'Respostas da empresa dentro de 24h depois que o cliente mandou mensagem.',
 };
+/** Para quem paga a tabela da Meta (o cliente Taxi paga todas as mensagens). */
+const SERVICO_GRATIS = ' A Meta não cobra por elas.';
+const explica = (g: Grupo, taxi: boolean) => EXPLICA[g] + (g === 'SERVICE' && !taxi ? SERVICO_GRATIS : '');
 
 function Linha({ rotulo, children }: { rotulo: string; children: ReactNode }) {
   return (
@@ -38,6 +41,7 @@ function CartaoFoco({ resumo, foco }: { resumo: Resumo; foco: Grupo }) {
   const cor = COR_GRUPO[foco];
   const Icone = ICONE[foco];
   const gratis = c.volume > 0 && c.cobradas === 0;
+  const taxi = semGratis(resumo);
   return (
     <section style={atraso(3)} className={`entrar ${CARTAO} overflow-hidden`}>
       <div className="h-1" style={{ background: cor }} aria-hidden />
@@ -51,10 +55,10 @@ function CartaoFoco({ resumo, foco }: { resumo: Resumo; foco: Grupo }) {
               Filtrando por {NOME_GRUPO[foco]}
               {gratis && <Badge className={TOM.sucesso}>Grátis</Badge>}
             </p>
-            <p className="text-xs leading-relaxed text-slate-500">{EXPLICA[foco]}</p>
+            <p className="text-xs leading-relaxed text-slate-500">{explica(foco, taxi)}</p>
           </div>
         </div>
-        <dl className="grid grid-cols-2 gap-px overflow-hidden rounded-xl border border-slate-100 bg-slate-100 sm:grid-cols-4 [&>div]:bg-card [&>div]:p-4">
+        <dl className={`grid grid-cols-2 gap-px overflow-hidden rounded-xl border border-slate-100 bg-slate-100 ${taxi ? 'sm:grid-cols-3' : 'sm:grid-cols-4'} [&>div]:bg-card [&>div]:p-4`}>
           <div>
             <dt className="text-[11px] font-semibold tracking-wide text-slate-400 uppercase">Mensagens</dt>
             <dd><Volume valor={c.volume} /></dd>
@@ -63,10 +67,12 @@ function CartaoFoco({ resumo, foco }: { resumo: Resumo; foco: Grupo }) {
             <dt className="text-[11px] font-semibold tracking-wide text-slate-400 uppercase">Cobradas</dt>
             <dd className="text-xl font-semibold text-slate-800 tabular-nums sm:text-2xl">{formatarNumero(c.cobradas)}</dd>
           </div>
-          <div>
-            <dt className="text-[11px] font-semibold tracking-wide text-slate-400 uppercase">Grátis</dt>
-            <dd className="text-xl font-semibold text-slate-800 tabular-nums sm:text-2xl">{formatarNumero(c.gratuitas)}</dd>
-          </div>
+          {!taxi && (
+            <div>
+              <dt className="text-[11px] font-semibold tracking-wide text-slate-400 uppercase">Grátis</dt>
+              <dd className="text-xl font-semibold text-slate-800 tabular-nums sm:text-2xl">{formatarNumero(c.gratuitas)}</dd>
+            </div>
+          )}
           <div>
             <dt className="text-[11px] font-semibold tracking-wide text-slate-400 uppercase">Custo</dt>
             <dd className="text-xl font-semibold text-slate-800 sm:text-2xl">
@@ -81,9 +87,11 @@ function CartaoFoco({ resumo, foco }: { resumo: Resumo; foco: Grupo }) {
 
 export function CardsCategoria({ resumo, foco }: { resumo: Resumo; foco?: Grupo | null }) {
   if (foco) return <CartaoFoco resumo={resumo} foco={foco} />;
+  const taxi = semGratis(resumo);
   return (
     <section className="space-y-3">
-      <TituloCartao icone={Layers} titulo="Por categoria de cobrança" descricao="A Meta cobra cada conversa conforme o tipo de mensagem." />
+      <TituloCartao icone={Layers} titulo={taxi ? 'Por categoria' : 'Por categoria de cobrança'}
+        descricao={taxi ? 'Tipo de cada mensagem. O preço por mensagem é o mesmo em todas.' : 'A Meta cobra cada conversa conforme o tipo de mensagem.'} />
       {/* Celular: carrossel com encaixe (4 cartões empilhados viravam meia página). Daí pra cima: grade. */}
       <div className="-mx-4 flex snap-x snap-mandatory gap-3 overflow-x-auto px-4 pb-2 [scrollbar-width:none] sm:mx-0 sm:grid sm:snap-none sm:grid-cols-2 sm:gap-4 sm:overflow-visible sm:px-0 sm:pb-0 xl:grid-cols-4">
         {resumo.categorias.map((c, i) => {
@@ -101,7 +109,7 @@ export function CardsCategoria({ resumo, foco }: { resumo: Resumo; foco?: Grupo 
                   <TooltipTrigger aria-label={`O que é ${NOME_GRUPO[c.categoria]}?`} className="rounded-full text-slate-400 hover:text-blue-600">
                     <CircleHelp className="size-3.5" aria-hidden />
                   </TooltipTrigger>
-                  <TooltipContent className="max-w-xs">{EXPLICA[c.categoria]}</TooltipContent>
+                  <TooltipContent className="max-w-xs">{explica(c.categoria, taxi)}</TooltipContent>
                 </Tooltip>
                 {gratis && <Badge className={`ml-auto ${TOM.sucesso}`}>Grátis</Badge>}
               </div>
@@ -115,7 +123,7 @@ export function CardsCategoria({ resumo, foco }: { resumo: Resumo; foco?: Grupo 
               <div className="space-y-1 border-t border-slate-100 pt-3">
                 <Linha rotulo="Custo">{gratis ? <span className="text-ok-texto">sem custo</span> : <Custo valor={c.custoBrl} situacao={c.custoSituacao} />}</Linha>
                 <Linha rotulo="Cobradas">{formatarNumero(c.cobradas)}</Linha>
-                <Linha rotulo="Grátis">{formatarNumero(c.gratuitas)}</Linha>
+                {!taxi && <Linha rotulo="Grátis">{formatarNumero(c.gratuitas)}</Linha>}
               </div>
             </article>
           );

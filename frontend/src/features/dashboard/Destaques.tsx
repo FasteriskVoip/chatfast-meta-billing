@@ -4,7 +4,7 @@ import { TOM } from '@/components/shared/tons';
 import { Kpi } from '@/components/shared/visual';
 import { formatarPreco } from '@/features/admin/tipos';
 import { Custo } from './Custo';
-import { NOME_GRUPO, type Grupo, type Resumo } from './tipos';
+import { NOME_GRUPO, semGratis, type Grupo, type Resumo } from './tipos';
 
 const inteiro = (n: number) => formatarNumero(Math.round(n));
 
@@ -12,6 +12,7 @@ const inteiro = (n: number) => formatarNumero(Math.round(n));
 export function Destaques({ resumo, foco }: { resumo: Resumo; foco?: Grupo | null }) {
   const { envio, periodo, total } = resumo;
   const gratuitas = total.volume - total.cobradas;
+  const taxi = semGratis(resumo);
   return (
     <div className="grid gap-4 lg:grid-cols-[minmax(0,22rem)_1fr]">
       <section aria-label="Custo do período" className="flex flex-col justify-between gap-4 rounded-2xl bg-gradient-to-br from-blue-600 to-blue-500 p-6 text-white shadow-sm">
@@ -30,13 +31,13 @@ export function Destaques({ resumo, foco }: { resumo: Resumo; foco?: Grupo | nul
             <dd className="font-semibold tabular-nums">{formatarBRL(total.custoMedioPorCobradaBrl)}</dd>
           </div>
           <div>
-            <dt className="text-[11px] text-white/70">Cobradas · grátis</dt>
-            <dd className="font-semibold tabular-nums">{formatarNumero(total.cobradas)} · {formatarNumero(gratuitas)}</dd>
+            <dt className="text-[11px] text-white/70">{taxi ? 'Mensagens cobradas' : 'Cobradas · grátis'}</dt>
+            <dd className="font-semibold tabular-nums">{formatarNumero(total.cobradas)}{!taxi && ` · ${formatarNumero(gratuitas)}`}</dd>
           </div>
         </dl>
         <p className="text-[10px] leading-snug text-white/70">
           {resumo.custo === 'fasterisk' && resumo.fasterisk ? (
-            <>{formatarPreco(resumo.fasterisk.precoBrl)} por mensagem cobrada. Mensagens grátis não são cobradas.</>
+            <>{formatarPreco(resumo.fasterisk.precoBrl)} por mensagem. Todas as mensagens são cobradas.</>
           ) : (
             <>
               Convertido para R$ pela cotação de cada dia
@@ -59,7 +60,7 @@ export function Destaques({ resumo, foco }: { resumo: Resumo; foco?: Grupo | nul
         {/* Com categoria filtrada, cobradas/grátis já estão no cartão de custo; o resto aqui não segue o filtro. */}
         {!foco && (
           <Kpi icone={Receipt} tom={TOM.marca} rotulo="Mensagens cobradas" valor={total.cobradas} formatar={inteiro}
-            detalhe={`${formatarNumero(gratuitas)} foram grátis`} />
+            detalhe={taxi ? 'todas as mensagens do período' : `${formatarNumero(gratuitas)} foram grátis`} />
         )}
         <Kpi icone={TrendingUp} tom={TOM.aviso} rotulo="Dia de pico" valor={envio.pico?.enviadas ?? null} formatar={inteiro}
           detalhe={envio.pico ? `enviadas em ${formatarData(envio.pico.data)}` : 'sem envios'} />

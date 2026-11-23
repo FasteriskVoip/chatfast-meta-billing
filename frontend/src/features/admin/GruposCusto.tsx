@@ -11,7 +11,7 @@ import { formatarPreco, type GrupoCusto } from './tipos';
 
 const VAZIO = { id: '', nome: '', precoBrl: '' };
 
-/** Grupos de custo Fasterisk: o preço por mensagem cobrada que os clientes Taxi veem no lugar do custo da Meta. */
+/** Grupos de custo Fasterisk: o preço por mensagem que os clientes Taxi veem no lugar do custo da Meta. */
 export function GruposCusto() {
   const [lista, setLista] = useState<GrupoCusto[] | null>(null);
   const [f, setF] = useState(VAZIO);
@@ -43,11 +43,11 @@ export function GruposCusto() {
     <div className="grid items-start gap-6 lg:grid-cols-[22rem_1fr]">
       <form onSubmit={salvar} className="entrar space-y-4 rounded-2xl border border-slate-200 bg-card p-6 shadow-sm">
         <TituloCartao icone={Layers} titulo={f.id ? 'Editar grupo' : 'Novo grupo'}
-          descricao="Preço por mensagem cobrada. O cliente Taxi vê esse valor no lugar do custo da Meta." />
+          descricao="Preço por mensagem. O cliente Taxi vê esse valor no lugar do custo da Meta." />
         <Campo id="grupo-nome" rotulo="Nome" required maxLength={60} placeholder="Standard" value={f.nome}
           onChange={(e) => setF({ ...f, nome: e.target.value })} erro={erroDoCampo(erro, 'nome')} />
         <Campo id="grupo-preco" rotulo="Preço por mensagem (R$)" required inputMode="decimal" placeholder="0,06" value={f.precoBrl}
-          ajuda="Cobrado por mensagem cobrada pela Meta. Mensagens grátis custam zero. Até 4 casas."
+          ajuda="Cobrado por mensagem, inclusive as que a Meta não cobra (para o Taxi não há grátis). Até 4 casas."
           onChange={(e) => setF({ ...f, precoBrl: e.target.value })} erro={erroDoCampo(erro, 'precoBrl')} />
         {f.id && <p className="text-xs text-atencao-texto">O novo preço vale para todo o histórico dos clientes deste grupo.</p>}
         {erro && !erroDoCampo(erro, 'nome') && !erroDoCampo(erro, 'precoBrl') && <p role="alert" className="text-xs text-erro-texto">{erro}</p>}

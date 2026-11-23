@@ -8,7 +8,8 @@ import { formatarDiaMes } from '@/components/shared/formatos';
 import { CARTAO, Segmentado, TituloCartao } from '@/components/shared/visual';
 import { Badge } from '@/components/ui/badge';
 import { TOM } from '@/components/shared/tons';
-import { COR_GRUPO, GRUPOS, NOME_GRUPO, type Grupo, type Resumo } from './tipos';
+import { formatarPreco } from '@/features/admin/tipos';
+import { COR_GRUPO, GRUPOS, NOME_GRUPO, semGratis, type Grupo, type Resumo } from './tipos';
 
 /** Barras crescem da base (700ms); a linha se desenha da esquerda pra direita (1000ms). */
 const animar = !window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
@@ -57,7 +58,7 @@ export function GraficoCategorias({ resumo, foco }: { resumo: Resumo } & Foco) {
   }));
   const descricao = foco
     ? (modo === 'volume' ? `Mensagens de ${NOME_GRUPO[foco]} em cada dia` : `Custo estimado em R$ de ${NOME_GRUPO[foco]} em cada dia`)
-    : (modo === 'volume' ? 'Mensagens por categoria em cada dia (Serviço é grátis)' : 'Custo estimado em R$ por categoria em cada dia');
+    : (modo === 'volume' ? `Mensagens por categoria em cada dia${semGratis(resumo) ? '' : ' (Serviço é grátis)'}` : 'Custo estimado em R$ por categoria em cada dia');
   return (
     <section className={`${CARTAO} flex h-full flex-col gap-4 p-5 transition-shadow duration-300 hover:shadow-md`}>
       <div className="flex flex-wrap items-start justify-between gap-3">
@@ -79,10 +80,16 @@ export function GraficoCategorias({ resumo, foco }: { resumo: Resumo } & Foco) {
           </BarChart>
         </ChartContainer>
         <Nota>
-          Dados do pricing_analytics: contam as mensagens entregues por categoria. Serviço (respostas dentro da janela de 24h) e
-          entradas por anúncio são gratuitos. O custo é aproximado, convertido para R$ pela cotação de cada dia, e não vem para
-          WABAs que usam a linha de crédito de um parceiro.
-          {modo === 'custo' && ' Dias sem custo informado aparecem como zero no gráfico; confira os cards.'}
+          {semGratis(resumo) ? (
+            <>Contam as mensagens entregues por categoria. Custo: {formatarPreco(resumo.fasterisk!.precoBrl)} por mensagem, todas cobradas.</>
+          ) : (
+            <>
+              Dados do pricing_analytics: contam as mensagens entregues por categoria. Serviço (respostas dentro da janela de 24h) e
+              entradas por anúncio são gratuitos. O custo é aproximado, convertido para R$ pela cotação de cada dia, e não vem para
+              WABAs que usam a linha de crédito de um parceiro.
+              {modo === 'custo' && ' Dias sem custo informado aparecem como zero no gráfico; confira os cards.'}
+            </>
+          )}
         </Nota>
       </div>
     </section>
@@ -117,8 +124,9 @@ export function GraficoCustoPorMensagem({ resumo, foco }: { resumo: Resumo } & F
           </LineChart>
         </ChartContainer>
         <Nota>
-          Custo do dia dividido pelas mensagens entregues da categoria, contando as gratuitas. Por isso Serviço fica abaixo do
-          preço cheio quando parte das mensagens cai na faixa grátis. Dias sem envio ou sem custo ficam em branco.
+          {semGratis(resumo)
+            ? 'Custo do dia dividido pelas mensagens entregues da categoria. Dias sem envio ficam em branco.'
+            : 'Custo do dia dividido pelas mensagens entregues da categoria, contando as gratuitas. Por isso Serviço fica abaixo do preço cheio quando parte das mensagens cai na faixa grátis. Dias sem envio ou sem custo ficam em branco.'}
         </Nota>
       </div>
     </section>

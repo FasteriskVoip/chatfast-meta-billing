@@ -38,6 +38,9 @@ export interface Categoria {
   custoSituacao: SituacaoCusto;
 }
 
+/** Cliente Taxi no preço Fasterisk: toda mensagem é cobrada, a tela não fala em grátis. */
+export const semGratis = (r: Pick<Resumo, 'custo'>) => r.custo === 'fasterisk';
+
 export interface Resumo {
   periodo: { de: string; ate: string; incluiHoje: boolean };
   envio: {
