@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { TOM } from '@/components/shared/tons';
 import { Vazio } from '@/components/shared/Vazio';
-import { CARTAO, atraso } from '@/components/shared/visual';
+import { CARTAO, Segmentado, atraso } from '@/components/shared/visual';
 import { Acesso } from '@/components/shared/Acesso';
 import { EsqueletoConteudoDashboard, EsqueletoDashboard, EsqueletoFiltros } from '@/components/shared/Esqueletos';
 import { formatarData, formatarDataHora, tempoRelativo } from '@/components/shared/formatos';
@@ -37,6 +37,8 @@ function DashboardPage({ sessao }: { sessao: SessaoAberta }) {
   const [atualizando, setAtualizando] = useState(false);
   const [status, setStatus] = useState<Status | null>(null);
   const [erro, setErro] = useState<string | null>(null);
+  // Só admin, em cliente Taxi: alterna a tela entre o preço Fasterisk (o que o cliente vê) e o custo da Meta.
+  const [custo, setCusto] = useState<'fasterisk' | 'meta'>('fasterisk');
 
   const params = useMemo(() => {
     if (!aplicado) return null;
@@ -44,8 +46,9 @@ function DashboardPage({ sessao }: { sessao: SessaoAberta }) {
     if (aplicado.contaId) p.contaId = aplicado.contaId;
     if (aplicado.numeroId) p.numeroId = aplicado.numeroId;
     if (aplicado.categoria) p.categoria = aplicado.categoria;
+    if (sessao.admin && custo === 'meta') p.custo = 'meta';
     return p;
-  }, [aplicado, base]);
+  }, [aplicado, base, sessao.admin, custo]);
 
   const carregarStatus = useCallback(async () => {
     const { data } = await api.get<Status>('/dashboard/status', { params: base });
@@ -101,6 +104,10 @@ function DashboardPage({ sessao }: { sessao: SessaoAberta }) {
             <div className="ml-auto flex flex-wrap items-center gap-2">
               <span id="seletor-cliente-dash" className="text-xs font-semibold text-blue-700">Cliente</span>
               <SeletorCliente atual={ver} rotuloId="seletor-cliente-dash" />
+              {resumo?.fasterisk && (
+                <Segmentado rotulo="Custo exibido" valor={custo} onChange={setCusto}
+                  opcoes={[['fasterisk', `Custo Fasterisk (${resumo.fasterisk.grupo ?? 'grupo'})`], ['meta', 'Custo Meta']] as const} />
+              )}
               <Button asChild variant="outline">
                 <a href={linkAdmin()}><ArrowLeft aria-hidden /> Voltar ao admin</a>
               </Button>

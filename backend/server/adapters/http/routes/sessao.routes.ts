@@ -18,10 +18,12 @@ export const rotasSessao =
       const companyid = primeiro(c, ['companyid', 'company_id', 'companyId']);
       const userId = primeiro(c, ['user_id', 'userId', 'userid', 'user']);
       if (!d.cfg.exigirSessao) {
-        // Só desenvolvimento (EXIGIR_SESSAO desligado): sessão de admin sem Helena para testar localmente.
+        // Só desenvolvimento (EXIGIR_SESSAO desligado): sessão sem Helena para testar localmente.
+        // Admin por padrão; ?como=cliente abre como cliente comum (ver a tela que ele vê).
         const cid = companyid && UUID.test(companyid) ? companyid.toLowerCase() : CID_DEV;
-        const { token, exp } = emitirSessao({ cid, uid: userId ?? 'dev', nome: 'Desenvolvimento', admin: true }, d.cfg.segredoSessao);
-        return { token, expiraEm: new Date(exp).toISOString(), nome: 'Desenvolvimento', admin: true, empresa: { nome: 'Desenvolvimento' } };
+        const admin = (req.body as { como?: string } | undefined)?.como !== 'cliente';
+        const { token, exp } = emitirSessao({ cid, uid: userId ?? 'dev', nome: 'Desenvolvimento', admin }, d.cfg.segredoSessao);
+        return { token, expiraEm: new Date(exp).toISOString(), nome: 'Desenvolvimento', admin, empresa: { nome: 'Desenvolvimento' } };
       }
       return d.sessao.abrir(companyid, userId);
     });

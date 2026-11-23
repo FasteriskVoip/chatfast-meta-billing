@@ -1,5 +1,5 @@
 import type {
-  ClienteRegistro, ContaRegistro, ContaRepository, CotacaoRegistro, NumeroRegistro,
+  ClienteRegistro, ContaRegistro, ContaRepository, CotacaoRegistro, GrupoCustoRegistro, NumeroRegistro,
 } from '../../../domain/ports/repositorios.js';
 import type { Prisma } from './client.js';
 import { deData, deDataNula, paraData } from './client.js';
@@ -8,11 +8,12 @@ type ClienteRow = Awaited<ReturnType<Prisma['cliente']['findFirstOrThrow']>>;
 type ContaRow = Awaited<ReturnType<Prisma['contaWaba']['findFirstOrThrow']>>;
 type NumeroRow = Awaited<ReturnType<Prisma['numero']['findFirstOrThrow']>>;
 type CotacaoRow = Awaited<ReturnType<Prisma['cotacao']['findFirstOrThrow']>>;
+type GrupoCustoRow = Awaited<ReturnType<Prisma['grupoCusto']['findFirstOrThrow']>>;
 
 const cliente = (r: ClienteRow): ClienteRegistro => ({
   id: r.id, companyid: r.companyid, nome: r.nome, status: r.status,
   tokenChatfastCifrado: r.tokenChatfastCifrado, tokenChatfastUltimos4: r.tokenChatfastUltimos4,
-  inativoDesde: deDataNula(r.inativoDesde), alertaChatfast: r.alertaChatfast, taxi: r.taxi,
+  inativoDesde: deDataNula(r.inativoDesde), alertaChatfast: r.alertaChatfast, taxi: r.taxi, grupoCustoId: r.grupoCustoId,
   limiteDiarioBrl: r.limiteDiarioBrl?.toFixed(2) ?? null, limiteMensalBrl: r.limiteMensalBrl?.toFixed(2) ?? null,
   alertaDiarioEm: deDataNula(r.alertaDiarioEm), alertaMensalEm: deDataNula(r.alertaMensalEm),
 });
@@ -31,6 +32,8 @@ const numero = (r: NumeroRow): NumeroRegistro => ({
 const cotacao = (r: CotacaoRow): CotacaoRegistro => ({
   id: r.id, valor: r.valor.toFixed(4), vigenteDesde: deData(r.vigenteDesde), criadoPor: r.criadoPor, criadoEm: r.criadoEm,
 });
+
+const grupoCusto = (r: GrupoCustoRow): GrupoCustoRegistro => ({ id: r.id, nome: r.nome, precoBrl: r.precoBrl.toFixed(4) });
 
 /** Converte os campos 'YYYY-MM-DD' do domínio para Date antes de gravar. */
 function comDatas<T extends object>(patch: T): Record<string, unknown> {
@@ -170,6 +173,13 @@ export function criarContaRepository(db: Prisma): ContaRepository {
         update: { valor: d.valor, criadoPor: d.criadoPor, criadoEm: new Date() },
       });
       return { cotacao: cotacao(r), substituiu: Boolean(existia) };
+    },
+
+    async listarGruposCusto() {
+      return (await db.grupoCusto.findMany({ orderBy: { precoBrl: 'asc' } })).map(grupoCusto);
+    },
+    async salvarGrupoCusto({ id, ...d }) {
+      return grupoCusto(id ? await db.grupoCusto.update({ where: { id }, data: d }) : await db.grupoCusto.create({ data: d }));
     },
 
     async registrarAuditoria(d) {

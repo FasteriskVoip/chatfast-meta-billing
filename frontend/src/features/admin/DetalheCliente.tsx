@@ -5,6 +5,7 @@ import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Skeleton } from '@/components/ui/skeleton';
 import { formatarData } from '@/components/shared/formatos';
 import { TOM } from '@/components/shared/tons';
@@ -15,7 +16,7 @@ import { ContaWaba } from './ContaWaba';
 import { FormConta } from './FormConta';
 import { PILULA, TituloCartao } from '@/components/shared/visual';
 import { CampoChave } from './Formulario';
-import { linkVerDashboard, type ClienteDetalhe } from './tipos';
+import { formatarPreco, linkVerDashboard, type ClienteDetalhe, type GrupoCusto } from './tipos';
 
 export function DetalheCliente({ clienteId, alertasAtivos, onVoltar, onAlterada }: {
   clienteId: string; alertasAtivos: boolean; onVoltar: () => void; onAlterada: () => void;
@@ -24,6 +25,8 @@ export function DetalheCliente({ clienteId, alertasAtivos, onVoltar, onAlterada 
   const [erro, setErro] = useState<string | null>(null);
   const [novaConta, setNovaConta] = useState(false);
   const [token, setToken] = useState('');
+  const [grupos, setGrupos] = useState<GrupoCusto[]>([]);
+  useEffect(() => void api.get<GrupoCusto[]>('/admin/grupos-custo').then((r) => setGrupos(r.data)).catch(() => {}), []);
 
   const carregar = useCallback(() => {
     api.get<ClienteDetalhe>(`/admin/clientes/${clienteId}`).then((r) => setC(r.data)).catch((e) => setErro(mensagemDeErro(e)));
@@ -85,10 +88,22 @@ export function DetalheCliente({ clienteId, alertasAtivos, onVoltar, onAlterada 
           </div>
         </div>
 
-        <div className="max-w-md">
+        <div className="grid max-w-3xl gap-3 sm:grid-cols-2">
           <CampoChave id="detalhe-taxi" rotulo="Cliente Taxi" checked={c.taxi}
-            descricao='Entra no filtro "Taxi" do admin e do relatório. Só clientes Taxi recebem alertas de consumo.'
+            descricao='Entra no filtro "Taxi" do admin e do relatório. Só clientes Taxi recebem alertas de consumo e veem o custo pelo grupo Fasterisk (padrão Standard).'
             onChange={(v) => void patch({ taxi: v }, v ? 'Marcado como Cliente Taxi' : 'Desmarcado como Cliente Taxi')} />
+          {c.taxi && (
+            <div className="grid gap-1 rounded-xl border border-slate-200 bg-card px-3 py-2.5">
+              <label id="detalhe-grupo-rotulo" className="text-sm font-semibold text-slate-800">Grupo de custo Fasterisk</label>
+              <Select value={c.grupoCustoId} onValueChange={(v) => void patch({ grupoCustoId: v }, 'Grupo de custo alterado')}>
+                <SelectTrigger aria-labelledby="detalhe-grupo-rotulo" className="w-full"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {grupos.map((g) => <SelectItem key={g.id} value={g.id}>{g.nome} · {formatarPreco(g.precoBrl)} por mensagem</SelectItem>)}
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-slate-500">O dashboard do cliente mostra esse preço × mensagens cobradas, no lugar do custo da Meta.</p>
+            </div>
+          )}
         </div>
 
         {c.alertaChatfast && (

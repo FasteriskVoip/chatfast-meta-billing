@@ -11,11 +11,18 @@ export interface ClienteLinha {
   alertaChatfast: boolean;
   /** Cliente Taxi: filtro no admin/relatório; só esses recebem alertas de consumo. */
   taxi: boolean;
+  /** Grupo de custo Fasterisk: o preço por mensagem cobrada que o cliente Taxi vê. */
+  grupoCustoId: string;
   contas: number;
   piorStatus: StatusConta | null;
   ultimoSync: string | null;
   alerta: boolean;
 }
+
+/** Grupo de custo Fasterisk: R$ por mensagem cobrada (decimal em string, 4 casas). */
+export interface GrupoCusto { id: string; nome: string; precoBrl: string }
+
+export const formatarPreco = (v: string) => `R$ ${Number(v).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 4 })}`;
 
 export interface Numero {
   id: string;
@@ -111,7 +118,9 @@ export interface ConsumoMes {
     enviadas: number;
     clienteId: string; mensagens: number; cobradas: number; gratuitas: number;
     custoBrl: string | null; custoSituacao: 'completo' | 'parcial' | 'indisponivel' | 'sem_cotacao';
+    /** Só clientes Taxi: preço do grupo × cobradas (o que o cliente vê). null nos demais. */
+    grupoCusto: string | null; custoFasteriskBrl: string | null;
   }[];
   /** Soma dos custos conhecidos (null = nenhum conhecido, nunca 0) e se algum cliente ficou sem custo completo. */
-  total: { custoBrl: string | null; incompleto: boolean };
+  total: { custoBrl: string | null; incompleto: boolean; custoFasteriskBrl: string | null };
 }

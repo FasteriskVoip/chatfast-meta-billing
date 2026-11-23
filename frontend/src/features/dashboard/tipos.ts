@@ -57,6 +57,10 @@ export interface Resumo {
     custoBrl: string | null; percentualDoTotal: number;
   }[];
   ultimoSync: string | null;
+  /** Cliente Taxi: preço do grupo Fasterisk (null nos demais). O nome do grupo só vem para o admin. */
+  fasterisk: { grupo?: string; precoBrl: string } | null;
+  /** Qual custo o resumo traz: preço Fasterisk (cliente Taxi) ou da Meta (demais, ou admin com custo=meta). */
+  custo: 'fasterisk' | 'meta';
 }
 
 export interface FiltroAplicado {

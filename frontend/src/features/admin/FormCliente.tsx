@@ -40,7 +40,7 @@ export function FormCliente({ aberto, onFechar, onSalvo }: { aberto: boolean; on
           <Campo id="tokenChatfast" rotulo="Token Chatfast" ajuda="Gerado no Chatfast do cliente, em Integração via API. Serve para confirmar quem abre o dashboard." type="password" autoComplete="off" required
             value={f.tokenChatfast} onChange={(e) => setF({ ...f, tokenChatfast: e.target.value })} erro={erroDoCampo(erro, 'tokenChatfast')} />
           <CampoChave id="novo-taxi" rotulo="Cliente Taxi" checked={f.taxi} onChange={(v) => setF({ ...f, taxi: v })}
-            descricao='Entra no filtro "Taxi" do admin e do relatório. Só clientes Taxi recebem alertas de consumo.' />
+            descricao='Entra no filtro "Taxi" do admin e do relatório. Só clientes Taxi recebem alertas de consumo e veem o custo pelo grupo Fasterisk (padrão Standard).' />
           {geral && <p role="alert" className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">{geral}</p>}
           <DialogFooter>
             <button type="button" className="rounded-lg px-3 py-2 text-sm text-slate-500 hover:text-slate-700" onClick={onFechar}>Cancelar</button>

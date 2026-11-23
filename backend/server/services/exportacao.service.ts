@@ -142,10 +142,12 @@ function abaClientes(wb: ExcelJS.Workbook, { periodo, clientes, total }: DadosCl
     { titulo: 'Taxa de entrega', largura: 10, fmt: FMT.pct },
     { titulo: 'Mensagens cobradas', largura: 12, fmt: FMT.inteiro },
     { titulo: 'Mensagens grátis', largura: 12, fmt: FMT.inteiro },
-    { titulo: 'Custo estimado (R$)', largura: 16, fmt: FMT.reais },
+    { titulo: 'Custo Meta estimado (R$)', largura: 16, fmt: FMT.reais },
     { titulo: '% do custo total', largura: 10, fmt: FMT.pct },
     { titulo: 'Custo por msg cobrada', largura: 13, fmt: FMT.reaisFino },
     { titulo: 'Situação do custo', largura: 22 },
+    { titulo: 'Grupo Fasterisk', largura: 14 },
+    { titulo: 'Custo Fasterisk (R$)', largura: 16, fmt: FMT.reais },
     { titulo: 'companyid', largura: 38 },
   ];
   const n = colunas.length;
@@ -168,7 +170,7 @@ function abaClientes(wb: ExcelJS.Workbook, { periodo, clientes, total }: DadosCl
       valorOuTexto(c.custoBrl, c.custoSituacao),
       custo !== null && totalNum ? custo / totalNum : '—',
       num(c.custoPorCobradaBrl) ?? '—',
-      SITUACAO[c.custoSituacao], c.companyid,
+      SITUACAO[c.custoSituacao], c.grupoCusto ?? '', num(c.custoFasteriskBrl) ?? '', c.companyid,
     ]);
     estiloLinha(r, i, n, c.status === 'INATIVO');
     r.getCell(n).font = { size: 9, color: { argb: COR.cinzaClaro } };
@@ -190,7 +192,8 @@ function abaClientes(wb: ExcelJS.Workbook, { periodo, clientes, total }: DadosCl
   const rt = s.addRow([
     'Total', '', '', soma('contas'), enviadas, soma('entregues'), enviadas ? soma('entregues') / enviadas : '—', cobradas, soma('gratuitas'),
     totalNum ?? 'indisponível', totalNum !== null ? 1 : '—', cobradasComCusto ? (totalNum ?? 0) / cobradasComCusto : '—',
-    totalNum === null ? 'nenhum cliente com custo' : total.incompleto ? 'parcial (há clientes sem custo completo)' : 'completo', '',
+    totalNum === null ? 'nenhum cliente com custo' : total.incompleto ? 'parcial (há clientes sem custo completo)' : 'completo',
+    '', num(total.custoFasteriskBrl) ?? '', '',
   ]);
   estiloTotal(rt, n);
   // Recursos nativos do Excel: barra no custo e na participação; escala de cor na taxa de entrega.
@@ -215,6 +218,7 @@ function abaClientes(wb: ExcelJS.Workbook, { periodo, clientes, total }: DadosCl
   notas(s, rt.number, n, [
     'Custo estimado em R$: a Meta informa o custo na moeda de cada WABA; as contas em dólar são convertidas pela cotação de cada dia (PTAX do Banco Central ou cadastro manual). A cobrança oficial é a fatura da Meta.',
     '"Parcial": parte do período sem custo informado pela Meta, então o valor real é maior ou igual. "Indisponível": a Meta não informa custo (ex.: linha de crédito de parceiro) ou falta a cotação. Custo ausente nunca é tratado como zero.',
+    'Custo Fasterisk: só clientes Taxi. Preço do grupo de custo × mensagens cobradas; é o valor que o cliente vê no dashboard.',
     'Enviadas e entregues contam todas as mensagens. Mensagens cobradas e grátis seguem a classificação de cobrança da Meta (pricing_analytics), que conta só as entregues.',
   ]);
   paraImpressao(s, inicio);
@@ -392,22 +396,27 @@ export function criarExportacaoService(d: {
     const alvo = (await d.repo.listarClientes()).filter((x) => taxi === undefined || x.taxi === taxi);
     // Em paralelo (o pool do Prisma limita as conexões). ponytail: um resumo por cliente; com centenas, agregar numa consulta só.
     const clientes = await Promise.all(alvo.map(async (c) => {
-      const { resumo, contas } = await d.dashboard.dadosResumo(c.companyid, { de: periodo.de, ate: periodo.ate });
+      // resumo = o que o cliente vê (preço Fasterisk se Taxi); resumoMeta = custo da Meta, o que a Fasterisk paga.
+      const { resumo: visto, resumoMeta: resumo, fasterisk, contas } = await d.dashboard.dadosResumo(c.companyid, { de: periodo.de, ate: periodo.ate });
       return {
         clienteId: c.id, nome: c.nome, companyid: c.companyid, status: c.status, taxi: c.taxi, contas: contas.length,
         enviadas: resumo.envio.enviadas, entregues: resumo.envio.entregues, taxaEntrega: resumo.envio.taxaEntrega,
         mensagens: resumo.total.volume, cobradas: resumo.total.cobradas, gratuitas: resumo.total.volume - resumo.total.cobradas,
         custoBrl: resumo.total.custoBrl, custoSituacao: resumo.total.custoSituacao,
         custoPorCobradaBrl: resumo.total.custoMedioPorCobradaBrl,
+        grupoCusto: fasterisk?.grupo ?? null,
+        custoFasteriskBrl: fasterisk ? visto.total.custoBrl : null,
         categorias: Object.fromEntries(resumo.categorias.map((x) => [x.categoria, { volume: x.volume, custoBrl: x.custoBrl }])) as
           Record<Grupo, { volume: number; custoBrl: string | null }>,
       };
     }));
     // Soma só os custos conhecidos; nenhum conhecido = ausente (null), nunca 0. Um lugar só para tela e relatório.
     const conhecidos = clientes.filter((c) => c.custoBrl !== null);
+    const fasteriskConhecidos = clientes.filter((c) => c.custoFasteriskBrl !== null);
     const total = {
       custoBrl: conhecidos.length ? conhecidos.reduce((t, c) => t + Number(c.custoBrl), 0).toFixed(2) : null,
       incompleto: clientes.some((c) => c.custoSituacao !== 'completo'),
+      custoFasteriskBrl: fasteriskConhecidos.length ? fasteriskConhecidos.reduce((t, c) => t + Number(c.custoFasteriskBrl), 0).toFixed(2) : null,
     };
     return { periodo, clientes, total };
   }
@@ -435,7 +444,7 @@ export function criarExportacaoService(d: {
 
     async xlsx(companyid: string, f: FiltrosDashboard): Promise<{ arquivo: Buffer; nome: string }> {
       const empresa = (await d.repo.clientePorCompanyid(companyid))?.nome ?? companyid;
-      const { resumo, contas, consumo, cotacoes, infos, ultimoSync } = await d.dashboard.dadosResumo(companyid, f);
+      const { resumo, fasterisk, custo: tipoCusto, contas, consumo, cotacoes, infos, ultimoSync } = await d.dashboard.dadosResumo(companyid, f);
       const wb = new ExcelJS.Workbook();
       wb.creator = 'Consumo Meta';
 
@@ -444,7 +453,9 @@ export function criarExportacaoService(d: {
         ['Consumo WhatsApp Cloud API', empresa],
         ['Período', `${f.de} a ${f.ate}`],
         ['Dados até', ultimoSync ? ultimoSync.toISOString() : '—'],
-        ['Observação', 'Custo em R$ estimado pela cotação vigente em cada dia'],
+        ['Observação', fasterisk && tipoCusto === 'fasterisk'
+          ? `Custo em R$: R$ ${fasterisk.precoBrl.replace('.', ',')} por mensagem cobrada`
+          : 'Custo em R$ estimado pela cotação vigente em cada dia'],
         [],
         ['Enviadas', resumo.envio.enviadas],
         ['Entregues', resumo.envio.entregues],

@@ -11,7 +11,7 @@ import type { SyncService } from './sync.service.js';
 
 const clienteView = (c: ClienteRegistro) => ({
   id: c.id, nome: c.nome, companyid: c.companyid, status: c.status,
-  tokenChatfastUltimos4: c.tokenChatfastUltimos4, alertaChatfast: c.alertaChatfast, taxi: c.taxi,
+  tokenChatfastUltimos4: c.tokenChatfastUltimos4, alertaChatfast: c.alertaChatfast, taxi: c.taxi, grupoCustoId: c.grupoCustoId,
   limiteDiarioBrl: c.limiteDiarioBrl, limiteMensalBrl: c.limiteMensalBrl,
 });
 
@@ -41,6 +41,10 @@ export function criarClientesService(d: Deps) {
       if (err instanceof ErroIndisponivel) throw new ErroNegocio(503, 'HELENA_INDISPONIVEL', 'Helena indisponível. Tente novamente');
       throw err;
     }
+  }
+
+  async function validarGrupo(id: string) {
+    if (!(await d.repo.listarGruposCusto()).some((g) => g.id === id)) throw new ErroNegocio(422, 'VALIDACAO', 'grupoCustoId: grupo não encontrado');
   }
 
   async function obter(id: string) {
@@ -91,17 +95,18 @@ export function criarClientesService(d: Deps) {
       };
     },
 
-    async criar(dados: { nome: string; companyid: string; tokenChatfast: string; taxi?: boolean }, autor: string) {
+    async criar(dados: { nome: string; companyid: string; tokenChatfast: string; taxi?: boolean; grupoCustoId?: string }, autor: string) {
       const companyid = dados.companyid.toLowerCase();
       if (await d.repo.clientePorCompanyid(companyid)) throw new ErroNegocio(409, 'DUPLICADO', 'Empresa já cadastrada');
+      if (dados.grupoCustoId) await validarGrupo(dados.grupoCustoId);
       await validarTokenChatfast(dados.tokenChatfast);
       const c = await d.repo.criarCliente({
-        companyid, nome: dados.nome.trim(), taxi: dados.taxi ?? false,
+        companyid, nome: dados.nome.trim(), taxi: dados.taxi ?? false, ...(dados.grupoCustoId && { grupoCustoId: dados.grupoCustoId }),
         tokenChatfastCifrado: d.cifra.cifrar(dados.tokenChatfast), tokenChatfastUltimos4: dados.tokenChatfast.slice(-4),
       });
       await registrarAuditoria(d.repo, {
         companyid, userId: autor, acao: 'cliente.criar', entidade: 'cliente', entidadeId: c.id,
-        dados: { nome: c.nome, taxi: c.taxi, tokenChatfast: dados.tokenChatfast },
+        dados: { nome: c.nome, taxi: c.taxi, grupoCustoId: c.grupoCustoId, tokenChatfast: dados.tokenChatfast },
       });
       return clienteView(c);
     },
@@ -121,7 +126,7 @@ export function criarClientesService(d: Deps) {
     async atualizar(
       id: string,
       p: {
-        nome?: string; tokenChatfast?: string; status?: 'ATIVO' | 'INATIVO'; taxi?: boolean;
+        nome?: string; tokenChatfast?: string; status?: 'ATIVO' | 'INATIVO'; taxi?: boolean; grupoCustoId?: string;
         limiteDiarioBrl?: string | null; limiteMensalBrl?: string | null;
       },
       autor: string,
@@ -131,6 +136,10 @@ export function criarClientesService(d: Deps) {
       const audit: Record<string, unknown> = {};
       if (p.nome !== undefined) patch.nome = audit.nome = p.nome.trim();
       if (p.taxi !== undefined) patch.taxi = audit.taxi = p.taxi;
+      if (p.grupoCustoId !== undefined) {
+        await validarGrupo(p.grupoCustoId);
+        patch.grupoCustoId = audit.grupoCustoId = p.grupoCustoId;
+      }
       // Limite novo (ou removido) zera o "já enviado": o novo valor pode disparar ainda no mesmo dia/mês.
       // O form manda os dois limites; zera só o "já enviado" do que mudou de valor (senão o outro alerta sai de novo).
       const mudou = (novo: string | null, atual: string | null) => (novo === null || atual === null ? novo !== atual : Number(novo) !== Number(atual));
@@ -155,10 +164,28 @@ export function criarClientesService(d: Deps) {
       const atualizado = await d.repo.atualizarCliente(id, patch);
       const alertas = p.limiteDiarioBrl !== undefined || p.limiteMensalBrl !== undefined;
       const acao = desativando ? 'cliente.desativar' : reativando ? 'cliente.reativar' : p.tokenChatfast ? 'cliente.trocar_token_chatfast'
-        : alertas ? 'cliente.alertas' : 'cliente.editar';
+        : alertas ? 'cliente.alertas' : p.grupoCustoId !== undefined ? 'cliente.grupo_custo' : 'cliente.editar';
       await registrarAuditoria(d.repo, { companyid: c.companyid, userId: autor, acao, entidade: 'cliente', entidadeId: id, dados: audit });
       if (reativando) d.emSegundoPlano(() => reprocessarReativado(atualizado));
       return clienteView(atualizado);
+    },
+
+    listarGrupos: () => d.repo.listarGruposCusto(),
+
+    /** Grupo de custo é configuração global da Fasterisk: auditado com o companyid de quem alterou. */
+    async salvarGrupo(dados: { id?: string; nome: string; precoBrl: string }, autor: { uid: string; cid: string }) {
+      const nome = dados.nome.trim();
+      const grupos = await d.repo.listarGruposCusto();
+      if (dados.id && !grupos.some((g) => g.id === dados.id)) throw new ErroNegocio(404, 'NAO_ENCONTRADO', 'Grupo não encontrado');
+      if (grupos.some((g) => g.id !== dados.id && g.nome.toLowerCase() === nome.toLowerCase())) {
+        throw new ErroNegocio(409, 'DUPLICADO', 'nome: já existe um grupo com esse nome');
+      }
+      const g = await d.repo.salvarGrupoCusto({ ...dados, nome });
+      await registrarAuditoria(d.repo, {
+        companyid: autor.cid, userId: autor.uid, acao: dados.id ? 'grupo_custo.editar' : 'grupo_custo.criar',
+        entidade: 'grupo_custo', entidadeId: g.id, dados: { nome: g.nome, precoBrl: g.precoBrl },
+      });
+      return g;
     },
   };
 }

@@ -12,7 +12,14 @@ const filtros = z.object({
   numeroId: z.string().uuid().optional(),
   categoria: z.enum(GRUPOS).optional(),
   companyid: z.string().uuid().optional(),
+  custo: z.enum(['meta']).optional(),
 });
+
+/** custo=meta só vale para o admin: o cliente Taxi nunca vê o custo da Meta. */
+const filtrosDe = (req: FastifyRequest) => {
+  const { companyid: _, custo, ...f } = filtros.parse(req.query);
+  return req.sessao.admin && custo ? { ...f, custo } : f;
+};
 
 /** Admin pode ver qualquer cliente passando companyid; os demais só a própria empresa. */
 const empresaAlvo = (req: FastifyRequest) => {
@@ -28,8 +35,9 @@ export const rotasDashboard =
     app.get('/status', async (req) => d.dashboard.status(empresaAlvo(req)));
 
     app.get('/resumo', async (req) => {
-      const { companyid: _, ...f } = filtros.parse(req.query);
-      return d.dashboard.resumo(empresaAlvo(req), f);
+      const r = await d.dashboard.resumo(empresaAlvo(req), filtrosDe(req));
+      // O nome do grupo é interno da Fasterisk: o cliente recebe só o preço.
+      return req.sessao.admin || !r.fasterisk ? r : { ...r, fasterisk: { precoBrl: r.fasterisk.precoBrl } };
     });
 
     app.post('/sincronizar', async (req, reply) => {
@@ -38,8 +46,7 @@ export const rotasDashboard =
     });
 
     app.get('/exportar.xlsx', async (req, reply) => {
-      const { companyid: _, ...f } = filtros.parse(req.query);
-      const { arquivo, nome: arquivoNome } = await d.exportacao.xlsx(empresaAlvo(req), f);
+      const { arquivo, nome: arquivoNome } = await d.exportacao.xlsx(empresaAlvo(req), filtrosDe(req));
       return reply
         .type('application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
         .header('Content-Disposition', `attachment; filename="${arquivoNome}"`)

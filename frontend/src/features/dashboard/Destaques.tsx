@@ -2,6 +2,7 @@ import { CalendarDays, CheckCheck, Gauge, Info, Receipt, Send, TrendingUp, Walle
 import { formatarBRL, formatarData, formatarNumero, formatarPercentual } from '@/components/shared/formatos';
 import { TOM } from '@/components/shared/tons';
 import { Kpi } from '@/components/shared/visual';
+import { formatarPreco } from '@/features/admin/tipos';
 import { Custo } from './Custo';
 import { NOME_GRUPO, type Grupo, type Resumo } from './tipos';
 
@@ -34,8 +35,14 @@ export function Destaques({ resumo, foco }: { resumo: Resumo; foco?: Grupo | nul
           </div>
         </dl>
         <p className="text-[10px] leading-snug text-white/70">
-          Convertido para R$ pela cotação de cada dia
-          {total.convertidoComCotacaoPosterior && ' · parte com cotação posterior'}. Valor aproximado: a cobrança oficial é a fatura da Meta.
+          {resumo.custo === 'fasterisk' && resumo.fasterisk ? (
+            <>{formatarPreco(resumo.fasterisk.precoBrl)} por mensagem cobrada. Mensagens grátis não são cobradas.</>
+          ) : (
+            <>
+              Convertido para R$ pela cotação de cada dia
+              {total.convertidoComCotacaoPosterior && ' · parte com cotação posterior'}. Valor aproximado: a cobrança oficial é a fatura da Meta.
+            </>
+          )}
         </p>
       </section>
 

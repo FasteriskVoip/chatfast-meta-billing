@@ -1,3 +1,4 @@
+import { deMicro, paraMicro } from './cotacao.js';
 import type { CategoriaMeta, DataISO, TipoPreco } from '../tipos.js';
 
 /**
@@ -20,4 +21,18 @@ export function custoEstimadoBrl(l: { data: DataISO; categoria: CategoriaMeta; t
   const [int = '0', frac = ''] = preco.split('.');
   const micro = (BigInt(int) * 1_000_000n + BigInt((frac + '000000').slice(0, 6))) * BigInt(l.volume);
   return `${micro / 1_000_000n}.${(micro % 1_000_000n).toString().padStart(6, '0')}`;
+}
+
+/**
+ * Cliente Taxi: o custo que ele vê é o preço do grupo Fasterisk (R$) × mensagens cobradas; grátis custa 0.
+ * Troca o custo da Meta nas linhas, então toda a agregação (categorias, dias, números, Excel) segue igual.
+ * ponytail: preço sem vigência; editar o grupo muda também o passado. Guardar vigência como na cotação se precisar.
+ */
+export function aplicarPrecoFasterisk<T extends { tipoPreco: TipoPreco; volume: number; custo: string | null; moeda: string; semCusto: number }>(
+  linhas: T[], precoBrl: string,
+): T[] {
+  const preco = paraMicro(precoBrl);
+  return linhas.map((l) => ({
+    ...l, custo: deMicro(l.tipoPreco === 'REGULAR' ? preco * BigInt(l.volume) : 0n), moeda: 'BRL', semCusto: 0,
+  }));
 }

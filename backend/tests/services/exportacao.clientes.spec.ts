@@ -86,12 +86,12 @@ describe('consumo e relatório de todos os clientes', () => {
     expect(linhas.map((l) => l.Cliente)).toEqual(['Clínica São José', 'Loja Sem Conta']);
     expect(linhas[0]).toMatchObject({
       Taxi: 'Não', Status: 'Ativo', 'Contas WABA': 1, Enviadas: 500, Entregues: 500, 'Taxa de entrega': 1,
-      'Mensagens cobradas': 99, 'Mensagens grátis': 0, 'Custo estimado (R$)': 250, '% do custo total': 1,
+      'Mensagens cobradas': 99, 'Mensagens grátis': 0, 'Custo Meta estimado (R$)': 250, '% do custo total': 1,
       'Situação do custo': 'completo', companyid: CID_A,
     });
     expect(linhas[0]!['Custo por msg cobrada']).toBeCloseTo(250 / 99, 4);
-    expect(linhas[1]).toMatchObject({ Taxi: 'Sim', 'Custo estimado (R$)': 0, 'Taxa de entrega': '—' });
-    expect(total).toMatchObject({ 'Contas WABA': 1, Enviadas: 500, 'Mensagens cobradas': 99, 'Custo estimado (R$)': 250, 'Situação do custo': 'completo' });
+    expect(linhas[1]).toMatchObject({ Taxi: 'Sim', 'Custo Meta estimado (R$)': 0, 'Taxa de entrega': '—' });
+    expect(total).toMatchObject({ 'Contas WABA': 1, Enviadas: 500, 'Mensagens cobradas': 99, 'Custo Meta estimado (R$)': 250, 'Situação do custo': 'completo' });
     expect(total['Custo por msg cobrada']).toBeCloseTo(250 / 99, 4);
   });
 
@@ -108,7 +108,7 @@ describe('consumo e relatório de todos os clientes', () => {
 
   it('total vem do backend: soma dos custos conhecidos e marca de incompleto', async () => {
     const svc = await montar();
-    expect((await svc.consumoDosClientes()).total).toEqual({ custoBrl: '10.00', incompleto: false });
+    expect((await svc.consumoDosClientes()).total).toEqual({ custoBrl: '10.00', incompleto: false, custoFasteriskBrl: '0.00' });
   });
 
   it('nenhum cliente com custo (sem cotação): total ausente, nunca R$ 0,00', async () => {
@@ -125,11 +125,11 @@ describe('consumo e relatório de todos os clientes', () => {
       repo, consumo, sync: { sincronizarConta: async () => 'OK' }, emSegundoPlano: () => {}, agora: () => AGORA,
     });
     const svc = criarExportacaoService({ dashboard, repo, agora: () => AGORA });
-    expect((await svc.consumoDosClientes()).total).toEqual({ custoBrl: null, incompleto: true });
+    expect((await svc.consumoDosClientes()).total).toMatchObject({ custoBrl: null, incompleto: true });
     const arquivo = (await svc.relatorioClientesXlsx()).arquivo;
     const { linhas, total } = await lerAba(arquivo, 'Clientes');
-    expect(linhas[0]).toMatchObject({ 'Custo estimado (R$)': 'indisponível (cotação não cadastrada)', '% do custo total': '—' });
-    expect(total).toMatchObject({ 'Custo estimado (R$)': 'indisponível', 'Situação do custo': 'nenhum cliente com custo' });
+    expect(linhas[0]).toMatchObject({ 'Custo Meta estimado (R$)': 'indisponível (cotação não cadastrada)', '% do custo total': '—' });
+    expect(total).toMatchObject({ 'Custo Meta estimado (R$)': 'indisponível', 'Situação do custo': 'nenhum cliente com custo' });
     const cat = await lerAba(arquivo, 'Por categoria');
     expect(cat.linhas[0]).toMatchObject({ 'Marketing\nmensagens': 10, 'Marketing\ncusto (R$)': '—' });
   });
@@ -143,7 +143,7 @@ describe('consumo e relatório de todos os clientes', () => {
     expect(s.autoFilter).toBeTruthy();
     const formato = (titulo: string) => s.getColumn(((s.getRow(linha).values as unknown[]).indexOf(titulo))).numFmt;
     expect(formato('Enviadas')).toBe('#,##0');
-    expect(formato('Custo estimado (R$)')).toBe('"R$" #,##0.00');
+    expect(formato('Custo Meta estimado (R$)')).toBe('"R$" #,##0.00');
     expect(formato('% do custo total')).toBe('0.0%');
     expect(s.pageSetup).toMatchObject({ orientation: 'landscape', fitToWidth: 1 });
     const cat = await lerAba(arquivo, 'Por categoria');

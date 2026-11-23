@@ -44,7 +44,7 @@ export function comparadorNulosNoFim<T>(valor: (t: T) => string | number | null,
   };
 }
 
-type Coluna = 'nome' | 'contas' | 'enviadas' | 'custo' | 'sync';
+type Coluna = 'nome' | 'contas' | 'enviadas' | 'custo' | 'fasterisk' | 'sync';
 type Ordem = { coluna: Coluna; desc: boolean };
 
 /** Cabeçalho que ordena ao clicar: 1º clique na direção mais útil, 2º inverte. */
@@ -96,6 +96,7 @@ export function ListaClientes({ painel, onAbrir }: { painel: Painel | null; onAb
     contas: (c) => c.contas,
     enviadas: (c) => custoDe.get(c.id)?.enviadas ?? null,
     custo: (c) => (custoDe.get(c.id)?.custoBrl == null ? null : Number(custoDe.get(c.id)!.custoBrl)),
+    fasterisk: (c) => (custoDe.get(c.id)?.custoFasteriskBrl == null ? null : Number(custoDe.get(c.id)!.custoFasteriskBrl)),
     sync: (c) => (c.ultimoSync ? Date.parse(c.ultimoSync) : null),
   };
   const visiveis = clientes
@@ -117,11 +118,11 @@ export function ListaClientes({ painel, onAbrir }: { painel: Painel | null; onAb
           className="entrar grid grid-cols-1 gap-px overflow-hidden rounded-2xl border border-slate-200 bg-slate-100 shadow-sm sm:grid-cols-2 lg:grid-cols-4 [&>*]:bg-card"
           style={{ animationDelay: '60ms' }}
         >
-          <Kpi icone={Wallet} tom={TOM.marca} rotulo="Custo no mês" valor={custoTotal} formatar={reais}
+          <Kpi icone={Wallet} tom={TOM.marca} rotulo="Custo Meta no mês" valor={custoTotal} formatar={reais}
             detalhe={consumoFalhou ? (
               <>Não foi possível calcular. <button type="button" className="font-semibold text-blue-600 hover:underline" onClick={carregar}>Tentar de novo</button></>
             ) : consumo
-              ? `estimado, de ${formatarDiaMes(consumo.periodo.de)} a ${formatarDiaMes(consumo.periodo.ate)}${consumo.total.incompleto ? ' · parte sem custo da Meta' : ''}`
+              ? `estimado, de ${formatarDiaMes(consumo.periodo.de)} a ${formatarDiaMes(consumo.periodo.ate)}${consumo.total.incompleto ? ' · parte sem custo da Meta' : ''}${consumo.total.custoFasteriskBrl ? ` · Fasterisk (Taxi) ${formatarBRL(consumo.total.custoFasteriskBrl)}` : ''}`
               : 'calculando…'} />
           <Kpi icone={Users} tom={TOM.marca} rotulo="Clientes" valor={clientes.length} formatar={inteiro} detalhe={`${ativos} ativo(s)`} />
           <Kpi icone={Smartphone} tom={TOM.marca} rotulo="Contas WABA" valor={contas} formatar={inteiro} detalhe="somando todos os clientes" />
@@ -174,14 +175,15 @@ export function ListaClientes({ painel, onAbrir }: { painel: Painel | null; onAb
                   <CabecalhoOrdenavel coluna="contas" rotulo="Contas" ordem={ordem} onOrdenar={ordenar} className="text-right" />
                   <TableHead>Status</TableHead>
                   <CabecalhoOrdenavel coluna="enviadas" rotulo="Enviadas no mês" ordem={ordem} onOrdenar={ordenar} className="text-right" />
-                  <CabecalhoOrdenavel coluna="custo" rotulo="Custo no mês" ordem={ordem} onOrdenar={ordenar} className="text-right" />
+                  <CabecalhoOrdenavel coluna="custo" rotulo="Custo Meta no mês" ordem={ordem} onOrdenar={ordenar} className="text-right" />
+                  <CabecalhoOrdenavel coluna="fasterisk" rotulo="Custo Fasterisk" ordem={ordem} onOrdenar={ordenar} className="text-right" />
                   <CabecalhoOrdenavel coluna="sync" rotulo="Último sync" ordem={ordem} onOrdenar={ordenar} />
                   <TableHead className="pr-5"><span className="sr-only">Ações</span></TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {visiveis.length === 0 && (
-                  <TableRow><TableCell colSpan={7} className="py-10 text-center text-sm text-slate-500">{busca ? <>Nenhum cliente encontrado para “{busca}”.</> : 'Nenhum cliente neste filtro.'}</TableCell></TableRow>
+                  <TableRow><TableCell colSpan={8} className="py-10 text-center text-sm text-slate-500">{busca ? <>Nenhum cliente encontrado para “{busca}”.</> : 'Nenhum cliente neste filtro.'}</TableCell></TableRow>
                 )}
                 {visiveis.map((c) => (
                   <TableRow
@@ -213,6 +215,10 @@ export function ListaClientes({ painel, onAbrir }: { painel: Painel | null; onAb
                         : <Skeleton className="ml-auto h-4 w-14" />}
                     </TableCell>
                     <TableCell className="text-right tabular-nums"><CustoMes c={custoDe.get(c.id)} falhou={consumoFalhou} /></TableCell>
+                    <TableCell className="text-right tabular-nums" title={custoDe.get(c.id)?.grupoCusto ? `Grupo ${custoDe.get(c.id)!.grupoCusto}` : undefined}>
+                      {custoDe.get(c.id)?.custoFasteriskBrl ? <span className="font-semibold text-slate-800">{formatarBRL(custoDe.get(c.id)!.custoFasteriskBrl)}</span>
+                        : <span className="text-slate-300">·</span>}
+                    </TableCell>
                     <TableCell className="text-xs text-slate-500 tabular-nums">{formatarDataHora(c.ultimoSync)}</TableCell>
                     <TableCell className="pr-5" onClick={(e) => e.stopPropagation()}>
                       <div className="flex items-center justify-end gap-1">

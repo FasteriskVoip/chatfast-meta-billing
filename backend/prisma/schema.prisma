@@ -85,6 +85,9 @@ model Cliente {
   alertaChatfast       Boolean       @default(false) @map("alerta_chatfast")
   /// Segmento "Cliente Taxi": filtro no admin/relatório; só esses clientes recebem alertas de consumo.
   taxi                 Boolean       @default(false)
+  /// Preço Fasterisk por mensagem cobrada: só vale para clientes Taxi. Padrão = grupo Standard (seed da migration).
+  grupoCustoId         String        @default(dbgenerated("'00000000-0000-0000-0000-000000000001'::uuid")) @map("grupo_custo_id") @db.Uuid
+  grupoCusto           GrupoCusto    @relation(fields: [grupoCustoId], references: [id])
   /// Alertas de consumo (R$): vazio = sem alerta. *Em = último dia/mês em que o webhook foi acionado.
   limiteDiarioBrl      Decimal?      @map("limite_diario_brl") @db.Decimal(12, 2)
   limiteMensalBrl      Decimal?      @map("limite_mensal_brl") @db.Decimal(12, 2)
@@ -185,6 +188,18 @@ model MensagensDiarias {
   @@unique([numeroId, data], map: "mensagens_diarias_chave")
   @@index([companyid, data])
   @@map("mensagens_diarias")
+}
+
+/// Grupo de custo Fasterisk (global, sem companyid): preço em R$ por mensagem cobrada dos clientes Taxi.
+model GrupoCusto {
+  id           String    @id @default(uuid()) @db.Uuid
+  nome         String    @unique
+  precoBrl     Decimal   @map("preco_brl") @db.Decimal(10, 4)
+  criadoEm     DateTime  @default(now()) @map("criado_em") @db.Timestamptz(6)
+  atualizadoEm DateTime  @updatedAt @map("atualizado_em") @db.Timestamptz(6)
+  clientes     Cliente[]
+
+  @@map("grupo_custo")
 }
 
 /// Cotação USD→BRL global (configuração da Fasterisk, sem companyid).

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { BarChart3, DollarSign, ShieldX, Users } from 'lucide-react';
+import { BarChart3, DollarSign, Layers, ShieldX, Users } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Acesso, TelaBloqueio } from '@/components/shared/Acesso';
 import { EsqueletoAdmin } from '@/components/shared/Esqueletos';
@@ -8,11 +8,12 @@ import { api, mensagemDeErro, type SessaoAberta } from '@/lib/api';
 import { telaPersistida } from '@/lib/telaPersistida';
 import { Cotacoes } from './Cotacoes';
 import { DetalheCliente } from './DetalheCliente';
+import { GruposCusto } from './GruposCusto';
 import { ListaClientes } from './ListaClientes';
 import { SeletorCliente } from './SeletorCliente';
 import type { Painel as DadosPainel } from './tipos';
 
-type Aba = 'clientes' | 'cotacao';
+type Aba = 'clientes' | 'cotacao' | 'grupos';
 
 function Painel({ sessao }: { sessao: SessaoAberta }) {
   const [aba, setAba] = telaPersistida<Aba>('aba', 'clientes');
@@ -28,6 +29,7 @@ function Painel({ sessao }: { sessao: SessaoAberta }) {
   const abas = [
     { id: 'clientes' as const, rotulo: 'Clientes', icone: Users, contador: painel?.contasComProblema, pendente: false },
     { id: 'cotacao' as const, rotulo: 'Cotação do dólar', icone: DollarSign, contador: 0, pendente: Boolean(painel?.semCotacao) },
+    { id: 'grupos' as const, rotulo: 'Grupos de custo', icone: Layers, contador: 0, pendente: false },
   ];
 
   return (
@@ -80,7 +82,9 @@ function Painel({ sessao }: { sessao: SessaoAberta }) {
 
         {erro && <p role="alert" className="text-sm text-erro-texto">{erro}</p>}
 
-        {aba === 'cotacao' ? (
+        {aba === 'grupos' ? (
+          <GruposCusto />
+        ) : aba === 'cotacao' ? (
           painel && <Cotacoes painel={painel} onAlterada={carregarPainel} />
         ) : clienteId ? (
           <DetalheCliente clienteId={clienteId} alertasAtivos={painel?.alertasAtivos ?? false} onVoltar={() => setClienteId(null)} onAlterada={carregarPainel} />

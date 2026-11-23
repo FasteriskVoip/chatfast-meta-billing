@@ -10,6 +10,7 @@ const novoCliente = z.object({
   companyid: z.string().uuid('companyid deve ser um UUID'),
   tokenChatfast: token,
   taxi: z.boolean().optional(),
+  grupoCustoId: z.string().uuid().optional(),
 });
 /** Valor em R$: aceita número ou texto com vírgula ("1.500" não: sem separador de milhar). null = sem alerta. */
 const limiteBrl = z
@@ -21,6 +22,7 @@ const limiteBrl = z
 const editarCliente = z.object({
   nome: z.string().trim().min(1).max(120).optional(),
   taxi: z.boolean().optional(),
+  grupoCustoId: z.string().uuid().optional(),
   limiteDiarioBrl: limiteBrl,
   limiteMensalBrl: limiteBrl,
   tokenChatfast: token.optional(),
@@ -39,6 +41,14 @@ const editarConta = z.object({
 const novaCotacao = z.object({
   valor: z.string().regex(/^\d{1,6}([.,]\d{1,4})?$/, 'valor com até 4 casas').transform((v) => v.replace(',', '.')),
   vigenteDesde: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'data no formato AAAA-MM-DD'),
+});
+/** R$ por mensagem cobrada: até 4 casas ("0,06" ou 0.06). */
+const grupoCusto = z.object({
+  nome: z.string().trim().min(1).max(60),
+  precoBrl: z
+    .union([z.number(), z.string().trim()])
+    .transform((v) => String(v).replace(',', '.'))
+    .pipe(z.string().regex(/^\d{1,6}(\.\d{1,4})?$/, 'preço em R$ com até 4 casas decimais').refine((v) => Number(v) > 0, 'preço maior que zero')),
 });
 
 const porMes = z.object({
@@ -99,6 +109,15 @@ export const rotasAdmin =
       const { coletaAtiva } = z.object({ coletaAtiva: z.boolean() }).parse(req.body);
       return d.contas.alternarNumero(p(req.params, 'numeroId'), coletaAtiva, req.sessao.uid);
     });
+
+    app.get('/grupos-custo', async () => d.clientes.listarGrupos());
+    app.post('/grupos-custo', async (req, reply) => {
+      reply.code(201);
+      return d.clientes.salvarGrupo(grupoCusto.parse(req.body), { uid: req.sessao.uid, cid: req.sessao.cid });
+    });
+    app.put('/grupos-custo/:grupoId', async (req) =>
+      d.clientes.salvarGrupo({ id: p(req.params, 'grupoId'), ...grupoCusto.parse(req.body) }, { uid: req.sessao.uid, cid: req.sessao.cid }),
+    );
 
     app.get('/cotacoes', async () => d.cotacoes.listar());
     app.post('/cotacoes', async (req, reply) => {

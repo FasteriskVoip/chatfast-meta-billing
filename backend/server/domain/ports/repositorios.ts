@@ -14,6 +14,8 @@ export interface ClienteRegistro {
   alertaChatfast: boolean;
   /** Segmento "Cliente Taxi": filtro no admin e no relatório; só esses clientes recebem alertas de consumo. */
   taxi: boolean;
+  /** Grupo de custo Fasterisk: o preço por mensagem cobrada que o cliente Taxi vê no lugar do custo da Meta. */
+  grupoCustoId: string;
   /** Alertas de consumo em R$ (decimal em string); null = sem alerta. */
   limiteDiarioBrl: string | null;
   limiteMensalBrl: string | null;
@@ -75,6 +77,13 @@ export interface CotacaoRegistro {
   criadoEm: Date;
 }
 
+export interface GrupoCustoRegistro {
+  id: string;
+  nome: string;
+  /** R$ por mensagem cobrada, decimal em string, 4 casas */
+  precoBrl: string;
+}
+
 export interface NovaAuditoria {
   companyid: string;
   userId: string;
@@ -84,7 +93,7 @@ export interface NovaAuditoria {
   dados: Record<string, unknown>;
 }
 
-export type NovoCliente = Pick<ClienteRegistro, 'companyid' | 'nome' | 'tokenChatfastCifrado' | 'tokenChatfastUltimos4'> & { taxi?: boolean };
+export type NovoCliente = Pick<ClienteRegistro, 'companyid' | 'nome' | 'tokenChatfastCifrado' | 'tokenChatfastUltimos4'> & { taxi?: boolean; grupoCustoId?: string };
 export type NovaConta = Pick<
   ContaRegistro,
   'clienteId' | 'companyid' | 'wabaId' | 'nome' | 'tokenCifrado' | 'tokenUltimos4' | 'tokenExpiraEm' | 'moeda' | 'fuso'
@@ -123,6 +132,10 @@ export interface ContaRepository {
   listarCotacoes(): Promise<CotacaoRegistro[]>;
   /** Upsert por vigenteDesde. */
   salvarCotacao(d: { valor: string; vigenteDesde: DataISO; criadoPor: string }): Promise<{ cotacao: CotacaoRegistro; substituiu: boolean }>;
+
+  listarGruposCusto(): Promise<GrupoCustoRegistro[]>;
+  /** Sem id cria; com id atualiza. */
+  salvarGrupoCusto(d: { id?: string; nome: string; precoBrl: string }): Promise<GrupoCustoRegistro>;
 
   registrarAuditoria(d: NovaAuditoria): Promise<void>;
 }

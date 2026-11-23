@@ -32,6 +32,8 @@ async function iniciarSessao(caminho: string, extra: Record<string, string> = {}
   const { data } = await axios.post<SessaoAberta>(`${API_URL}${caminho}`, {
     companyid: companyidDaUrl(),
     user_id: userIdDaUrl(),
+    // Só dev: o backend ignora quando EXIGIR_SESSAO está ligado.
+    como: params().get('como') ?? undefined,
     ...extra,
   });
   api.defaults.headers.common.Authorization = `Bearer ${data.token}`;

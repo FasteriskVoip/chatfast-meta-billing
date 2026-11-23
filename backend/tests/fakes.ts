@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import type { Cifra } from '../server/domain/ports/Cifra.js';
 import type {
-  ClienteRegistro, ConsumoRepository, ContaRegistro, ContaRepository, CotacaoRegistro, ExecucaoRegistro,
+  ClienteRegistro, ConsumoRepository, ContaRegistro, ContaRepository, CotacaoRegistro, ExecucaoRegistro, GrupoCustoRegistro,
   LinhaConsumoNova, LinhaMensagensNova, NovaAuditoria, NumeroRegistro,
 } from '../server/domain/ports/repositorios.js';
 
@@ -15,6 +15,7 @@ export const silencioso = { info() {}, warn() {}, error() {} };
 
 export const CID_A = '11111111-1111-4111-8111-111111111111';
 export const CID_B = '22222222-2222-4222-8222-222222222222';
+export const GRUPO_STANDARD = '00000000-0000-0000-0000-000000000001';
 export const CID_FASTERISK = '00000000-0000-4000-8000-00000000fa57';
 
 /** Repositório de cadastro em memória com o mesmo contrato do Prisma. */
@@ -24,6 +25,7 @@ export class RepoMemoria implements ContaRepository {
   numeros: NumeroRegistro[] = [];
   execucoes: (ExecucaoRegistro & { contaWabaId: string })[] = [];
   cotacoes: CotacaoRegistro[] = [];
+  grupos: GrupoCustoRegistro[] = [{ id: GRUPO_STANDARD, nome: 'Standard', precoBrl: '0.0600' }];
   auditoria: NovaAuditoria[] = [];
   lockAgora = Date.now;
 
@@ -31,7 +33,7 @@ export class RepoMemoria implements ContaRepository {
     const c: ClienteRegistro = {
       id: randomUUID(), companyid: CID_A, nome: 'Empresa Teste', status: 'ATIVO',
       tokenChatfastCifrado: cifraFake.cifrar('chatfast-token-1234'), tokenChatfastUltimos4: '1234',
-      inativoDesde: null, alertaChatfast: false, taxi: false,
+      inativoDesde: null, alertaChatfast: false, taxi: false, grupoCustoId: GRUPO_STANDARD,
       limiteDiarioBrl: null, limiteMensalBrl: null, alertaDiarioEm: null, alertaMensalEm: null, ...p,
     };
     this.clientes.push(c);
@@ -142,6 +144,12 @@ export class RepoMemoria implements ContaRepository {
     return { cotacao: { ...c }, substituiu: false };
   }
 
+  async listarGruposCusto() { return [...this.grupos]; }
+  async salvarGrupoCusto({ id, ...d }: { id?: string; nome: string; precoBrl: string }) {
+    const g = id ? Object.assign(this.grupos.find((x) => x.id === id)!, d) : { id: randomUUID(), ...d };
+    if (!id) this.grupos.push(g);
+    return { ...g };
+  }
   async registrarAuditoria(d: NovaAuditoria) { this.auditoria.push(d); }
 }
 

@@ -1,5 +1,6 @@
 import { montarResumo, type NumeroInfo } from '../domain/consumo/agregacao.js';
 import { diasEntre, hojeNoFuso } from '../domain/consumo/periodo.js';
+import { aplicarPrecoFasterisk } from '../domain/consumo/precos.js';
 import { ErroNegocio } from '../domain/ports/erros.js';
 import type { ConsumoRepository, ContaRegistro, ContaRepository } from '../domain/ports/repositorios.js';
 import { FUSO_PADRAO } from '../domain/sync/normalizacao.js';
@@ -17,6 +18,8 @@ export interface FiltrosDashboard {
   contaId?: string;
   numeroId?: string;
   categoria?: Grupo;
+  /** Só admin (a rota descarta para os demais): cliente Taxi com o custo da Meta no lugar do preço Fasterisk. */
+  custo?: 'meta';
 }
 
 interface Deps {
@@ -47,7 +50,9 @@ export function criarDashboardService(d: Deps) {
 
   async function dadosResumo(companyid: string, f: FiltrosDashboard) {
     validarPeriodo(f);
-    const [contas, numeros, cotacoes, consumo, mensagens] = await Promise.all([
+    const [cliente, grupos, contas, numeros, cotacoes, consumoMeta, mensagens] = await Promise.all([
+      d.repo.clientePorCompanyid(companyid),
+      d.repo.listarGruposCusto(),
       d.repo.contasDaEmpresa(companyid),
       d.repo.numerosDaEmpresa(companyid),
       d.repo.listarCotacoes(),
@@ -60,19 +65,25 @@ export function criarDashboardService(d: Deps) {
       .map((n) => ({
         id: n.id, conta: nomeConta.get(n.contaWabaId) ?? '', display: n.display, nomeVerificado: n.verifiedName, qualidade: n.qualidade,
       }));
-    const resumo = montarResumo({
-      de: f.de, ate: f.ate, hoje: hojeNoFuso(agora(), fusoDe(contas)), grupo: f.categoria,
-      consumo, mensagens, numeros: infos, cotacoes,
-    });
-    return { resumo, contas, consumo, cotacoes, infos, ultimoSync: maisRecente(contas.map((c) => c.ultimoSyncEm)) };
+    // Cliente Taxi vê o preço do grupo Fasterisk; resumoMeta guarda o custo da Meta (o que a Fasterisk paga).
+    const grupoTaxi = cliente?.taxi ? grupos.find((g) => g.id === cliente.grupoCustoId) ?? null : null;
+    const grupo = f.custo === 'meta' ? null : grupoTaxi;
+    const consumo = grupo ? aplicarPrecoFasterisk(consumoMeta, grupo.precoBrl) : consumoMeta;
+    const base = { de: f.de, ate: f.ate, hoje: hojeNoFuso(agora(), fusoDe(contas)), grupo: f.categoria, mensagens, numeros: infos, cotacoes };
+    const resumoMeta = montarResumo({ ...base, consumo: consumoMeta });
+    const resumo = grupo ? montarResumo({ ...base, consumo }) : resumoMeta;
+    // fasterisk = o cliente é Taxi (a tela do admin mostra o botão Fasterisk/Meta); custo = qual valor o resumo traz.
+    const fasterisk = grupoTaxi && { grupo: grupoTaxi.nome, precoBrl: grupoTaxi.precoBrl };
+    const custo: 'fasterisk' | 'meta' = grupo ? 'fasterisk' : 'meta';
+    return { resumo, resumoMeta, fasterisk, custo, contas, consumo, cotacoes, infos, ultimoSync: maisRecente(contas.map((c) => c.ultimoSyncEm)) };
   }
 
   return {
     dadosResumo,
 
     async resumo(companyid: string, f: FiltrosDashboard) {
-      const { resumo, ultimoSync } = await dadosResumo(companyid, f);
-      return { ...resumo, ultimoSync };
+      const { resumo, fasterisk, custo, ultimoSync } = await dadosResumo(companyid, f);
+      return { ...resumo, ultimoSync, fasterisk, custo };
     },
 
     async filtros(companyid: string) {

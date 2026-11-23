@@ -21,6 +21,9 @@ const ROTAS: [string, string][] = [
   ['PATCH', `/api/admin/numeros/${ID}`],
   ['GET', '/api/admin/cotacoes'],
   ['POST', '/api/admin/cotacoes'],
+  ['GET', '/api/admin/grupos-custo'],
+  ['POST', '/api/admin/grupos-custo'],
+  ['PUT', `/api/admin/grupos-custo/${ID}`],
 ];
 
 describe('guarda do admin', () => {
