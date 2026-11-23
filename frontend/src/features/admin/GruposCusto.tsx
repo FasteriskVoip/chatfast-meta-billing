@@ -7,7 +7,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { api, mensagemDeErro } from '@/lib/api';
 import { PILULA, TituloCartao } from '@/components/shared/visual';
 import { Campo, erroDoCampo } from './Formulario';
-import { formatarPreco, type GrupoCusto } from './tipos';
+import { formatarPreco, type ClienteLinha, type GrupoCusto } from './tipos';
 
 const VAZIO = { id: '', nome: '', precoBrl: '' };
 
@@ -18,8 +18,13 @@ export function GruposCusto() {
   const [erro, setErro] = useState<string | null>(null);
   const [salvando, setSalvando] = useState(false);
 
+  const [clientes, setClientes] = useState<ClienteLinha[]>([]);
+
   const carregar = () => void api.get<GrupoCusto[]>('/admin/grupos-custo').then((r) => setLista(r.data)).catch(() => setLista([]));
   useEffect(carregar, []);
+  useEffect(() => void api.get<ClienteLinha[]>('/admin/clientes').then((r) => setClientes(r.data)).catch(() => {}), []);
+  // Só clientes Taxi usam o grupo; os demais ficam no Standard por padrão, mas sem efeito.
+  const taxiNoGrupo = (id: string) => clientes.filter((c) => c.taxi && c.grupoCustoId === id);
 
   async function salvar(e: React.FormEvent) {
     e.preventDefault();
@@ -44,9 +49,9 @@ export function GruposCusto() {
       <form onSubmit={salvar} className="entrar space-y-4 rounded-2xl border border-slate-200 bg-card p-6 shadow-sm">
         <TituloCartao icone={Layers} titulo={f.id ? 'Editar grupo' : 'Novo grupo'}
           descricao="Preço por mensagem. O cliente Taxi vê esse valor no lugar do custo da Meta." />
-        <Campo id="grupo-nome" rotulo="Nome" required maxLength={60} placeholder="Standard" value={f.nome}
+        <Campo id="grupo-nome" rotulo="Nome" required maxLength={60} placeholder="Ex.: Premium" value={f.nome}
           onChange={(e) => setF({ ...f, nome: e.target.value })} erro={erroDoCampo(erro, 'nome')} />
-        <Campo id="grupo-preco" rotulo="Preço por mensagem (R$)" required inputMode="decimal" placeholder="0,06" value={f.precoBrl}
+        <Campo id="grupo-preco" rotulo="Preço por mensagem (R$)" required inputMode="decimal" placeholder="Ex.: 0,08" value={f.precoBrl}
           ajuda="Cobrado por mensagem, inclusive as que a Meta não cobra (para o Taxi não há grátis). Até 4 casas."
           onChange={(e) => setF({ ...f, precoBrl: e.target.value })} erro={erroDoCampo(erro, 'precoBrl')} />
         {f.id && <p className="text-xs text-atencao-texto">O novo preço vale para todo o histórico dos clientes deste grupo.</p>}
@@ -69,13 +74,21 @@ export function GruposCusto() {
           <div className="border-t border-slate-100">
             <Table>
               <TableHeader>
-                <TableRow><TableHead className="pl-6">Grupo</TableHead><TableHead className="text-right">Preço por mensagem</TableHead><TableHead className="pr-6"><span className="sr-only">Ações</span></TableHead></TableRow>
+                <TableRow><TableHead className="pl-6">Grupo</TableHead><TableHead className="text-right">Preço por mensagem</TableHead><TableHead className="text-right">Clientes Taxi</TableHead><TableHead className="pr-6"><span className="sr-only">Ações</span></TableHead></TableRow>
               </TableHeader>
               <TableBody>
                 {lista.map((g) => (
                   <TableRow key={g.id}>
                     <TableCell className="pl-6 font-semibold text-slate-800">{g.nome}</TableCell>
                     <TableCell className="text-right text-slate-700 tabular-nums">{formatarPreco(g.precoBrl)}</TableCell>
+                    <TableCell className="max-w-72 text-right">
+                      <span className="font-semibold text-slate-700 tabular-nums">{taxiNoGrupo(g.id).length}</span>
+                      {taxiNoGrupo(g.id).length > 0 && (
+                        <span className="block truncate text-xs text-slate-500" title={taxiNoGrupo(g.id).map((c) => c.nome).join(', ')}>
+                          {taxiNoGrupo(g.id).map((c) => c.nome).join(', ')}
+                        </span>
+                      )}
+                    </TableCell>
                     <TableCell className="pr-6 text-right">
                       <Button variant="ghost" size="sm" onClick={() => { setF({ id: g.id, nome: g.nome, precoBrl: g.precoBrl.replace('.', ',') }); setErro(null); }}>
                         <Pencil aria-hidden /> Editar

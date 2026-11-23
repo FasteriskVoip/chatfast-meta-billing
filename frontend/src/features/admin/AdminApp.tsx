@@ -42,7 +42,7 @@ function Painel({ sessao }: { sessao: SessaoAberta }) {
             </span>
             <div className="min-w-0 flex-1">
               <h1 className="text-2xl leading-tight font-bold text-slate-800">Consumo Meta</h1>
-              <p className="text-xs text-slate-500">Administração dos clientes, contas WABA e cotação</p>
+              <p className="text-xs text-slate-500">Administração dos clientes, contas WABA, cotação e grupos de custo</p>
             </div>
             <div className="flex flex-wrap items-end gap-4">
               <div className="flex flex-wrap gap-1.5 self-center">

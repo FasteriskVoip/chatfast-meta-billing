@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useState } from 'react';
 import {
-  AlertTriangle, ArrowDown, ArrowUp, CheckCircle2, ChevronRight, ChevronsUpDown, ExternalLink, Plus, Search, Smartphone, Users, Wallet,
+  AlertTriangle, ArrowDown, ArrowUp, CheckCircle2, ChevronRight, ChevronsUpDown, ExternalLink, Plus, Search, TrendingDown, TrendingUp, Users, Wallet,
 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { Select, SelectContent, SelectItem, SelectSeparator, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { formatarBRL, formatarDataHora, formatarDiaMes, formatarNumero } from '@/components/shared/formatos';
@@ -15,7 +16,7 @@ import { telaPersistida } from '@/lib/telaPersistida';
 import { FormCliente } from './FormCliente';
 import { RelatorioClientes } from './RelatorioClientes';
 import { Kpi, PILULA, Segmentado, TituloCartao } from '@/components/shared/visual';
-import { ROTULO_STATUS, linkVerDashboard, type ClienteLinha, type ConsumoMes, type Painel } from './tipos';
+import { ROTULO_STATUS, linkVerDashboard, type ClienteLinha, type ConsumoMes, type GrupoCusto, type Painel } from './tipos';
 
 const inteiro = (n: number) => Math.round(n).toLocaleString('pt-BR');
 const reais = (n: number) => formatarBRL(n.toFixed(2));
@@ -29,6 +30,21 @@ function CustoMes({ c, falhou }: { c?: ConsumoMes['clientes'][number]; falhou: b
   return (
     <span className="font-semibold text-slate-800" title={parcial ? 'Parcial: parte do mês sem custo da Meta; o valor real é maior ou igual' : undefined}>
       {formatarBRL(c.custoBrl)}{parcial && <span className="text-atencao-texto">*</span>}
+    </span>
+  );
+}
+
+/** Fasterisk − Meta de um cliente Taxi; null quando falta um dos dois (custo ausente nunca vira 0). */
+const margem = (c?: ConsumoMes['clientes'][number]) =>
+  c?.custoFasteriskBrl == null || c.custoBrl === null ? null : Number(c.custoFasteriskBrl) - Number(c.custoBrl);
+
+/** Diferença em R$ com sinal, verde quando a Fasterisk cobra mais que paga, vermelho quando cobra menos. */
+function Margem({ valor }: { valor: number | null }) {
+  if (valor === null) return null;
+  const positiva = valor >= 0;
+  return (
+    <span className={`block text-[11px] font-semibold ${positiva ? 'text-ok-texto' : 'text-erro-texto'}`} title="Custo Fasterisk − custo Meta">
+      {positiva ? '+' : '−'}{formatarBRL(Math.abs(valor).toFixed(2))}
     </span>
   );
 }
@@ -73,6 +89,10 @@ export function ListaClientes({ painel, onAbrir }: { painel: Painel | null; onAb
   const [novo, setNovo] = useState(false);
   const [busca, setBusca] = useState('');
   const [segmento, setSegmento] = useState<'todos' | 'taxi' | 'outros'>('todos');
+  // Grupo de custo Fasterisk: só faz sentido para clientes Taxi. '' = todos os grupos.
+  const [grupo, setGrupo] = useState('');
+  const [grupos, setGrupos] = useState<GrupoCusto[]>([]);
+  const nomeGrupo = new Map(grupos.map((g) => [g.id, g.nome]));
   const [consumo, setConsumo] = useState<ConsumoMes | null>(null);
   const [consumoFalhou, setConsumoFalhou] = useState(false);
   const [ordem, setOrdem] = telaPersistida<Ordem>('ordem-clientes', { coluna: 'nome', desc: false });
@@ -82,6 +102,7 @@ export function ListaClientes({ painel, onAbrir }: { painel: Painel | null; onAb
 
   const carregar = useCallback(() => {
     api.get<ClienteLinha[]>('/admin/clientes').then((r) => setClientes(r.data)).catch((e) => setErro(mensagemDeErro(e)));
+    api.get<GrupoCusto[]>('/admin/grupos-custo').then((r) => setGrupos(r.data)).catch(() => {});
     // Separado da lista: com muitos clientes o custo demora mais, e a tabela não precisa esperar.
     setConsumoFalhou(false);
     api.get<ConsumoMes>('/admin/consumo').then((r) => setConsumo(r.data)).catch(() => setConsumoFalhou(true));
@@ -102,10 +123,17 @@ export function ListaClientes({ painel, onAbrir }: { painel: Painel | null; onAb
   const visiveis = clientes
     ?.filter((c) =>
       (segmento === 'todos' || c.taxi === (segmento === 'taxi')) &&
+      (segmento !== 'taxi' || !grupo || c.grupoCustoId === grupo) &&
       (!termo || c.nome.toLowerCase().includes(termo) || c.companyid.includes(termo)))
     .sort(comparadorNulosNoFim(valor[ordem.coluna], ordem.desc));
   const ativos = clientes?.filter((c) => c.status === 'ATIVO').length ?? 0;
   const contas = clientes?.reduce((s, c) => s + c.contas, 0) ?? 0;
+  const taxis = clientes?.filter((c) => c.taxi).length ?? 0;
+  // Margem só entre os Taxi com os dois custos conhecidos; os sem custo Meta ficam de fora e são avisados.
+  const comMargem = consumo?.clientes.filter((c) => margem(c) !== null) ?? [];
+  const margemTotal = comMargem.length ? comMargem.reduce((t, c) => t + margem(c)!, 0) : null;
+  const taxiSemMeta = (consumo?.clientes.filter((c) => c.custoFasteriskBrl !== null).length ?? 0) - comMargem.length;
+  const receitaTaxi = consumo?.total.custoFasteriskBrl == null ? null : Number(consumo.total.custoFasteriskBrl);
   const problemas = painel?.contasComProblema ?? 0;
 
   return (
@@ -122,10 +150,19 @@ export function ListaClientes({ painel, onAbrir }: { painel: Painel | null; onAb
             detalhe={consumoFalhou ? (
               <>Não foi possível calcular. <button type="button" className="font-semibold text-blue-600 hover:underline" onClick={carregar}>Tentar de novo</button></>
             ) : consumo
-              ? `estimado, de ${formatarDiaMes(consumo.periodo.de)} a ${formatarDiaMes(consumo.periodo.ate)}${consumo.total.incompleto ? ' · parte sem custo da Meta' : ''}${consumo.total.custoFasteriskBrl ? ` · Fasterisk (Taxi) ${formatarBRL(consumo.total.custoFasteriskBrl)}` : ''}`
+              ? `estimado, de ${formatarDiaMes(consumo.periodo.de)} a ${formatarDiaMes(consumo.periodo.ate)}${consumo.total.incompleto ? ' · parte sem custo da Meta' : ''}`
               : 'calculando…'} />
-          <Kpi icone={Users} tom={TOM.marca} rotulo="Clientes" valor={clientes.length} formatar={inteiro} detalhe={`${ativos} ativo(s)`} />
-          <Kpi icone={Smartphone} tom={TOM.marca} rotulo="Contas WABA" valor={contas} formatar={inteiro} detalhe="somando todos os clientes" />
+          <Kpi icone={margemTotal !== null && margemTotal < 0 ? TrendingDown : TrendingUp} tom={margemTotal !== null && margemTotal < 0 ? TOM.erro : TOM.sucesso}
+            rotulo="Fasterisk (Taxi) no mês" valor={receitaTaxi} formatar={reais}
+            detalhe={consumoFalhou ? 'não foi possível calcular' : !consumo ? 'calculando…' : receitaTaxi === null ? 'nenhum cliente Taxi com consumo' : margemTotal === null ? 'margem indisponível: sem custo da Meta' : (
+              <>
+                margem sobre a Meta{' '}
+                <b className={margemTotal < 0 ? 'text-erro-texto' : 'text-ok-texto'}>{margemTotal < 0 ? '−' : '+'}{formatarBRL(Math.abs(margemTotal).toFixed(2))}</b>
+                {taxiSemMeta > 0 && ` · ${taxiSemMeta} sem custo da Meta`}
+              </>
+            )} />
+          <Kpi icone={Users} tom={TOM.marca} rotulo="Clientes" valor={clientes.length} formatar={inteiro}
+            detalhe={`${ativos} ativo(s) · ${taxis} Taxi · ${contas} ${contas === 1 ? 'conta' : 'contas'} WABA`} />
           {problemas ? (
             <Kpi icone={AlertTriangle} tom={TOM.erro} rotulo="Com problema" valor={problemas} formatar={inteiro} detalhe="token inválido, expirando ou erro no sync" corValor="text-erro-texto" />
           ) : (
@@ -142,6 +179,16 @@ export function ListaClientes({ painel, onAbrir }: { painel: Painel | null; onAb
           <div className="flex flex-wrap items-center gap-2">
             <Segmentado rotulo="Filtrar clientes" valor={segmento} onChange={setSegmento}
               opcoes={[['todos', 'Todos'], ['taxi', 'Taxi'], ['outros', 'Outros']] as const} />
+            {segmento === 'taxi' && grupos.length > 0 && (
+              <Select value={grupo || 'todos'} onValueChange={(v) => setGrupo(v === 'todos' ? '' : v)}>
+                <SelectTrigger aria-label="Filtrar por grupo de custo" className="w-48"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="todos">Todos os grupos</SelectItem>
+                  <SelectSeparator />
+                  {grupos.map((g) => <SelectItem key={g.id} value={g.id}>{g.nome}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            )}
             <div className="relative">
               <Search className="pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-slate-400" aria-hidden />
               <Input
@@ -197,7 +244,7 @@ export function ListaClientes({ painel, onAbrir }: { painel: Painel | null; onAb
                       <div className="flex flex-wrap items-center gap-1.5 font-semibold text-slate-800">
                         {c.alerta && <AlertTriangle className="size-4 text-erro" aria-label="Precisa de atenção" />}
                         {c.nome}
-                        {c.taxi && <Badge className={TOM.marca}>Taxi</Badge>}
+                        {c.taxi && <Badge className={TOM.marca}>Taxi{nomeGrupo.has(c.grupoCustoId) && ` · ${nomeGrupo.get(c.grupoCustoId)}`}</Badge>}
                         {c.status === 'INATIVO' && <Badge className={TOM.neutro}>Inativo</Badge>}
                         {c.alertaChatfast && <Badge className={TOM.erro}>Token Chatfast recusado</Badge>}
                       </div>
@@ -216,8 +263,12 @@ export function ListaClientes({ painel, onAbrir }: { painel: Painel | null; onAb
                     </TableCell>
                     <TableCell className="text-right tabular-nums"><CustoMes c={custoDe.get(c.id)} falhou={consumoFalhou} /></TableCell>
                     <TableCell className="text-right tabular-nums" title={custoDe.get(c.id)?.grupoCusto ? `Grupo ${custoDe.get(c.id)!.grupoCusto}` : undefined}>
-                      {custoDe.get(c.id)?.custoFasteriskBrl ? <span className="font-semibold text-slate-800">{formatarBRL(custoDe.get(c.id)!.custoFasteriskBrl)}</span>
-                        : <span className="text-slate-300">·</span>}
+                      {custoDe.get(c.id)?.custoFasteriskBrl ? (
+                        <>
+                          <span className="font-semibold text-slate-800">{formatarBRL(custoDe.get(c.id)!.custoFasteriskBrl)}</span>
+                          <Margem valor={margem(custoDe.get(c.id))} />
+                        </>
+                      ) : <span className="text-slate-300">·</span>}
                     </TableCell>
                     <TableCell className="text-xs text-slate-500 tabular-nums">{formatarDataHora(c.ultimoSync)}</TableCell>
                     <TableCell className="pr-5" onClick={(e) => e.stopPropagation()}>
